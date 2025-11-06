@@ -7,6 +7,42 @@
 
 #include "hamming.h"
 
+#define READ_CHUNK_LENGTH 4
+
+size_t file_size(FILE *f)
+{
+    long pos = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    long l = ftell(f);
+    fseek(f, 0, SEEK_END);
+    long r = ftell(f);
+
+    fseek(f, pos, 0);
+
+    return r - l;
+}
+
+typedef struct
+{
+    FILE *f;
+    bit_vec vec;
+} file_iter;
+
+file_iter file_iter_init(const char *filename)
+{
+    FILE *f = fopen(filename, "rb");
+    if (!f)
+    {
+        fprintf(stderr, "Could not open file [%s] for READ", filename);
+        assert(false);
+    }
+
+
+    
+
+}
+
 void test_hamming()
 {
 

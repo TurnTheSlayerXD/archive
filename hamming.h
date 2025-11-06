@@ -27,9 +27,7 @@ bit_vec bit_vec_new(size_t bit_count)
 void bit_vec_delete(bit_vec *ptr)
 {
     free(ptr->ptr);
-    ptr->ptr = NULL;
-    ptr->r_size = 0;
-    ptr->bit_count = 0;
+    *ptr = (bit_vec){0};
 }
 
 char bit_vec_get_bit_at(const bit_vec *vec, size_t i)
@@ -70,9 +68,7 @@ void delete_bit_mat(bit_mat *mat)
         bit_vec_delete(&mat->ptr[i]);
     }
     free(mat->ptr);
-    mat->ptr = NULL;
-    mat->rows = 0;
-    mat->cols = 0;
+    *mat = (bit_mat){0};
 }
 
 char *bit_vec_to_str(const bit_vec *vec);
