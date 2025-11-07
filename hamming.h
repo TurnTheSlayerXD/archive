@@ -8,6 +8,8 @@
 #include <math.h>
 #include <stdbool.h>
 
+#define BITS_IN_BYTE 8
+
 typedef struct bit_vec
 {
     char *ptr;
@@ -17,7 +19,7 @@ typedef struct bit_vec
 
 bit_vec bit_vec_new(size_t bit_count)
 {
-    size_t r_size = bit_count / 8 + ((bit_count % 8) > 0 ? 1 : 0);
+    size_t r_size = bit_count / BITS_IN_BYTE + ((bit_count % BITS_IN_BYTE) > 0 ? 1 : 0);
     return (bit_vec){
         .ptr = calloc(r_size, sizeof(char)),
         .r_size = r_size,
@@ -32,15 +34,15 @@ void bit_vec_delete(bit_vec *ptr)
 
 char bit_vec_get_bit_at(const bit_vec *vec, size_t i)
 {
-    assert((i / 8) < vec->r_size);
-    return (vec->ptr[i / 8] >> (i % 8)) & 1;
+    assert((i / BITS_IN_BYTE) < vec->r_size);
+    return (vec->ptr[i / BITS_IN_BYTE] >> (i % BITS_IN_BYTE)) & 1;
 }
 
 void bit_vec_set_bit_at(bit_vec *vec, size_t i, char val)
 {
-    assert((i / 8) < vec->r_size);
-    size_t j = i % 8;
-    vec->ptr[i / 8] = ((~(val << j)) & vec->ptr[i / 8]) | (val << j);
+    assert((i / BITS_IN_BYTE) < vec->r_size);
+    size_t j = i % BITS_IN_BYTE;
+    vec->ptr[i / BITS_IN_BYTE] = ((~(val << j)) & vec->ptr[i / BITS_IN_BYTE]) | (val << j);
 }
 
 typedef struct bit_mat
@@ -86,7 +88,7 @@ size_t *build_product_result(const bit_vec vec, size_t K)
     for (size_t i = 0; i < vec.bit_count; ++i)
     {
         size_t num = i + 1;
-        for (size_t k = 0; k < 8 * sizeof(size_t) && (num >> k) > 0; ++k)
+        for (size_t k = 0; k < BITS_IN_BYTE * sizeof(size_t) && (num >> k) > 0; ++k)
         {
             if ((num >> k) & 1)
             {
@@ -112,6 +114,18 @@ size_t *build_product_result(const bit_vec vec, size_t K)
 
     delete_bit_mat(&mat);
     return res;
+}
+
+size_t hamming_calc_encoded_size(size_t bit_count)
+{
+    size_t K = 1;
+    const size_t N = bit_count;
+
+    while (K != (size_t)ceil(log2(N + K + 1)))
+    {
+        ++K;
+    }
+    return bit_count + K;
 }
 
 bit_vec hamming_algo(const bit_vec vec)
@@ -198,6 +212,21 @@ char *bit_vec_to_str(const bit_vec *vec)
     }
     str[vec->bit_count] = '\0';
     return str;
+}
+
+bit_vec bit_vec_concat(const bit_vec lhs, const bit_vec rhs)
+{
+    bit_vec new = bit_vec_new(lhs.bit_count + rhs.bit_count);
+    size_t new_i = 0;
+    for (size_t i = 0; i < lhs.bit_count; ++i, new_i += 1)
+    {
+        bit_vec_set_bit_at(&new, new_i, bit_vec_get_bit_at(&lhs, i));
+    }
+    for (size_t i = 0; i < rhs.bit_count; ++i, new_i += 1)
+    {
+        bit_vec_set_bit_at(&new, new_i, bit_vec_get_bit_at(&rhs, i));
+    }
+    return new;
 }
 
 #endif
