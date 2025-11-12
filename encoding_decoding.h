@@ -12,16 +12,21 @@ typedef struct
     size_t BITS_per_chunk;
     size_t enc_BYTES_per_chunk;
     size_t enc_BITS_per_chunk;
+
+    size_t FREE_FILE_COUNT;
 } config;
 
-config config_new(size_t bytes_per_read)
+config config_new(size_t bytes_per_read, size_t FREE_FILE_COUNT)
 {
     size_t enc_bits_per_chunk = hamming_calc_encoded_size(bytes_per_read * BITS_IN_BYTE);
     size_t enc_bytes_per_chunk = (size_t)ceil((double)enc_bits_per_chunk / 8.);
-    return (config){.BYTES_per_chunk = bytes_per_read,
-                    .BITS_per_chunk = bytes_per_read * BITS_IN_BYTE,
-                    .enc_BYTES_per_chunk = enc_bytes_per_chunk,
-                    .enc_BITS_per_chunk = enc_bits_per_chunk};
+    return (config){
+        .BYTES_per_chunk = bytes_per_read,
+        .BITS_per_chunk = bytes_per_read * BITS_IN_BYTE,
+        .enc_BYTES_per_chunk = enc_bytes_per_chunk,
+        .enc_BITS_per_chunk = enc_bits_per_chunk,
+        .FREE_FILE_COUNT = FREE_FILE_COUNT,
+    };
 }
 
 size_t do_file_encoding(FILE *input_file, size_t input_file_len, FILE *output_file, config cnf)
@@ -149,5 +154,14 @@ void do_file_decoding(encoded_file enc_file, FILE *output_file, config cnf)
     bit_vec_delete(&vec);
 }
 
-size_t calc_encoded_size(size_t init_size);
+size_t calc_encoded_size(size_t init_size, config cnf)
+{
+    size_t k = init_size / cnf.BYTES_per_chunk;
+    size_t enc_whole = k * cnf.enc_BYTES_per_chunk;
+
+    size_t left = init_size % cnf.BYTES_per_chunk;
+    size_t enc_left = ceil(hamming_calc_encoded_size(left * BITS_IN_BYTE) / 8.);
+
+    return enc_whole + enc_left;
+}
 #endif
