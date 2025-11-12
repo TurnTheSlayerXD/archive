@@ -60,7 +60,7 @@ typedef struct
 {
     char id[3];
     size_t file_count;
-    size_t files_available;
+    size_t free_header_space_size;
 } arch_header;
 
 typedef struct
@@ -81,14 +81,15 @@ typedef struct
 {
     FILE *f;
     const char *name;
-    size_t file_count;
-    size_t files_available;
+
+    arch_header hdr;
+
     file_desc *file_descs;
 } arch_instance;
 
 void arch_instance_close(arch_instance *inst)
 {
-    for (size_t i = 0; i < inst->file_count; ++i)
+    for (size_t i = 0; i < inst->hdr.file_count; ++i)
     {
         free(&inst->file_descs[i].filename);
         inst->file_descs[i].filename = NULL;
@@ -109,7 +110,6 @@ arch_instance arch_instance_create(const char *path)
             fprintf(stderr, "arch (updated) at path %s could not be opened", path);
             return (arch_instance){0};
         }
-        arch_instance inst = (arch_instance){.f = f, .name = path, .file_count = 0, .file_descs = NULL};
 
         arch_header hdr;
         if (fread(&hdr, sizeof(arch_header), 1, f) != 1)
@@ -123,19 +123,17 @@ arch_instance arch_instance_create(const char *path)
             fprintf(stderr, "arch (updated) Failed confirming HAM from %s", path);
             return (arch_instance){0};
         }
+        arch_instance inst = (arch_instance){.f = f, .name = path, .hdr = hdr, .file_descs = NULL};
+        fprintf(stdout, "arch (updated) at path %s contains n = %lu files, available space = %lu", path, inst.hdr.file_count, inst.hdr.free_header_space_size);
 
-        inst.file_count = hdr.file_count;
-        inst.files_available = hdr.files_available;
-        fprintf(stdout, "arch (updated) at path %s contains n = %lu files, available files = %lu", path, inst.file_count, inst.files_available);
-
-        if (!inst.file_count)
+        if (!inst.hdr.file_count)
         {
             return inst;
         }
 
-        inst.file_descs = calloc(sizeof(file_desc), inst.file_count);
+        inst.file_descs = calloc(sizeof(file_desc), inst.hdr.file_count);
 
-        for (size_t i = 0; i < inst.file_count; ++i)
+        for (size_t i = 0; i < inst.hdr.file_count; ++i)
         {
             file_header hdr;
             if (fread(&hdr, sizeof(file_header), 1, f) != 1)
@@ -145,7 +143,7 @@ arch_instance arch_instance_create(const char *path)
                 return (arch_instance){0};
             }
             inst.file_descs[i].hdr = hdr;
-            inst.file_descs[i].filename = malloc(hdr.name_len);
+            inst.file_descs[i].filename = calloc(1, hdr.name_len);
             if (fread(inst.file_descs[i].filename, hdr.name_len, 1, f) != 1)
             {
                 fprintf(stderr, "(update) could not properly read %lu-th file NAME from arch %s, expected to read %lu bytes", i, path, hdr.name_len);
@@ -161,14 +159,13 @@ arch_instance arch_instance_create(const char *path)
         fprintf(stderr, "arch (created) at path [%s] could not be created", path);
         return (arch_instance){0};
     }
+    arch_header hdr = {.file_count = 0, .id = "HAM", .free_header_space_size = 0};
     arch_instance inst = {
         .f = f,
         .name = path,
-        .file_count = 0,
-        .files_available = 0,
+        .hdr = hdr,
         .file_descs = NULL,
     };
-    arch_header hdr = {.file_count = 0, .id = "HAM"};
     if (fwrite(&hdr, sizeof(arch_header), 1, f) != 1)
     {
         fprintf(stderr, "arch (created) at path [%s] could not be written with header", path);
@@ -200,12 +197,73 @@ file_to_append file_to_append_open(const char *filename)
     return str;
 }
 
-void arch_instance_insert_files(arch_instance inst, const char **filenames, size_t exp_file_count)
+size_t file_header_size(file_header *hdr)
 {
-    file_to_append *files = calloc(exp_file_count, sizeof(file_to_append));
+    return sizeof(file_header) + hdr->name_len;
+}
+
+size_t calc_space_for_file_headers(file_to_append *new_files, size_t new_fcount)
+{
+    size_t tot_size = 0;
+    for (size_t i = 0; i < new_fcount; ++i)
+    {
+        tot_size += sizeof(file_header) + strlen(new_files[i].filename) + 1;
+    }
+    return tot_size;
+}
+
+size_t total_header_space(arch_instance *inst)
+{
+    size_t f_hdr_size = 0;
+    for (size_t i = 0; i < inst->hdr.file_count; ++i)
+    {
+        f_hdr_size += inst->file_descs[i].hdr.name_len + sizeof(file_header);
+    }
+    return sizeof(arch_header) + f_hdr_size + inst->hdr.free_header_space_size;
+}
+
+bool arch_instance_resize_header(arch_instance *inst, file_to_append *new_files, size_t new_fcount)
+{
+    assert(new_fcount > 0);
+
+    size_t total_space_for_new_files = calc_space_for_files(new_files, new_fcount);
+
+    if (inst->hdr.free_header_space_size < total_space_for_new_files)
+    {
+
+        size_t first_f_offset;
+        size_t prev_header_size = 0;
+        inst->file_descs = realloc(inst->file_descs, (inst->hdr.file_count + new_fcount) * sizeof(file_desc));
+
+        for (size_t i = 0; i < new_fcount; ++i)
+        {
+            inst->file_descs[inst->hdr.file_count + i] = (file_desc){
+                .filename = new_files[i].filename,
+                .hdr = {
+                    .init_size = new_files[i].file_size,
+                    .enc_size = calc_encoded_size(new_files[i].file_size),
+                    .name_len = strlen(new_files[i].filename) + 1,
+                },
+            };
+        }
+
+        inst->hdr.file_count += new_fcount;
+
+    
+        inst->hdr.free_header_space_size 
+    }
+    return true;
+}
+
+void arch_instance_insert_files(arch_instance inst, const char **filenames, size_t file_count)
+{
+
+    arch_instance_resize_header(&inst, filenames, file_count);
+
+    file_to_append *files = calloc(file_count, sizeof(file_to_append));
     while (true)
     {
-        for (size_t i = 0; i < exp_file_count; ++i)
+        for (size_t i = 0; i < file_count; ++i)
         {
             files[i] = file_to_append_open(filenames[i]);
             if (!files[i].f_stream)
@@ -217,7 +275,7 @@ void arch_instance_insert_files(arch_instance inst, const char **filenames, size
         break;
     }
 
-    for (size_t i = 0; i < exp_file_count; ++i)
+    for (size_t i = 0; i < file_count; ++i)
     {
         if (files[i].f_stream)
         {

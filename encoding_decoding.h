@@ -149,4 +149,5 @@ void do_file_decoding(encoded_file enc_file, FILE *output_file, config cnf)
     bit_vec_delete(&vec);
 }
 
+size_t calc_encoded_size(size_t init_size);
 #endif
