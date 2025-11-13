@@ -8,16 +8,7 @@
 #include "hamming.h"
 #include "encoding_decoding.h"
 
-size_t file_size(FILE *f)
-{
-    size_t init = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    size_t l = ftell(f);
-    fseek(f, 0, SEEK_END);
-    size_t r = ftell(f);
-    fseek(f, init, SEEK_SET);
-    return r - l;
-}
+#include "arch_instance.h"
 
 void test_hamming()
 {
@@ -57,13 +48,20 @@ void test_hamming()
 
 
 
+
+
 int main(int argc, char **argv)
 {
-    config cnf = config_new(100000);
+    (void)argc, (void)argv;
 
-    (void)argc;
-    (void)argv;
+    config cnf = config_new(100000, 2);
 
+    arch_instance inst = arch_instance_create("test.ham");
+
+    arch_insert_files(&inst, (const char *[]){"./test.txt"}, 1, cnf);
+
+    fprintf(stdout, "inst.hdr.file_count = %d\n", inst.hdr.file_count);
+    arch_instance_close(&inst);
     return 0;
 }
 
