@@ -75,15 +75,15 @@ typedef struct
 {
     FILE *file;
     size_t src_file_len;
-    size_t file_len;
+    size_t enc_file_len;
 } encoded_file;
 
 void do_file_decoding(encoded_file enc_file, FILE *output_file, config cnf)
 {
-    size_t cur_pos = ftell(enc_file.file);
+    size_t cur_pos = 0;
     bit_vec vec = bit_vec_new(cnf.enc_BITS_per_chunk);
     assert(vec.r_size == cnf.enc_BYTES_per_chunk);
-    while (cur_pos + cnf.enc_BYTES_per_chunk < enc_file.file_len)
+    while (cur_pos + cnf.enc_BYTES_per_chunk < enc_file.enc_file_len)
     {
         if (cnf.enc_BYTES_per_chunk != fread(vec.ptr, 1, cnf.enc_BYTES_per_chunk, enc_file.file))
         {
@@ -102,7 +102,7 @@ void do_file_decoding(encoded_file enc_file, FILE *output_file, config cnf)
             assert(false && "do_file_decoding : expected to write cnf.BYTES_per_chunk");
         }
         bit_vec_delete(&res.vec);
-        cur_pos = ftell(enc_file.file);
+        cur_pos += cnf.enc_BYTES_per_chunk;
     }
     size_t n_bytes_src = enc_file.src_file_len % cnf.BYTES_per_chunk;
     if (n_bytes_src == 0)
@@ -123,11 +123,11 @@ void do_file_decoding(encoded_file enc_file, FILE *output_file, config cnf)
             assert(false && "do_file_decoding : expected to write cnf.BYTES_per_chunk");
         }
         bit_vec_delete(&res.vec);
-        cur_pos = ftell(enc_file.file);
+        cur_pos += cnf.enc_BYTES_per_chunk;
     }
     else
     {
-        size_t n_bytes_enc = enc_file.file_len - cur_pos;
+        size_t n_bytes_enc = enc_file.enc_file_len - cur_pos;
         size_t n_bits_enc = hamming_calc_encoded_size(n_bytes_src * BITS_IN_BYTE);
         bit_vec last_vec = bit_vec_new(n_bits_enc);
         assert(last_vec.r_size == n_bytes_enc);

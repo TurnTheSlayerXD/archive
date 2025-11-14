@@ -1,4 +1,4 @@
-                                                                                                    all: archive.exe
+all: archive.exe
 
 
 archive.exe: main.o

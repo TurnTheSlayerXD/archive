@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <libgen.h>
+#include <string.h>
 
 #include "helper.h"
 #include "encoding_decoding.h"
@@ -15,6 +17,7 @@ typedef struct
     char id[3];
     size_t file_count;
     size_t free_file_count;
+    size_t bytes_per_read;
 } arch_header;
 
 #define arch_file_header_NAME_LEN 100
@@ -43,18 +46,21 @@ void arch_instance_close(arch_instance *inst)
     *inst = (arch_instance){0};
 }
 
-arch_instance arch_instance_create(const char *path)
+arch_instance arch_instance_create(const char *path, bool should_exist)
 {
-    if (access(path, F_OK) == 0)
+    if (access(path, F_OK) == 0 || should_exist)
     {
         FILE *f;
-        f = fopen(path, "a+");
+        f = fopen(path, "r+");
         if (!f)
         {
             fprintf(stderr, "arch (updated) at path %s could not be opened\n", path);
             return (arch_instance){0};
         }
-        fseek(f, 0, SEEK_SET);
+        if (fseek(f, 0, SEEK_SET))
+        {
+            assert(false && "fseek(f, 0, SEEK_SET)");
+        }
 
         arch_header hdr;
         if (fread(&hdr, sizeof(arch_header), 1, f) != 1)
@@ -95,7 +101,7 @@ arch_instance arch_instance_create(const char *path)
         fprintf(stderr, "arch (created) at path [%s] could not be created\n", path);
         return (arch_instance){0};
     }
-    arch_header hdr = {.file_count = 0, .id = "HAM", .free_file_count = 0};
+    arch_header hdr = {.file_count = 0, .id = "HAM", .free_file_count = 0, .bytes_per_read = 100};
     arch_instance inst = {
         .f = f,
         .name = path,
@@ -113,15 +119,18 @@ arch_instance arch_instance_create(const char *path)
 
 typedef struct
 {
-    const char *filename;
+    char *filename;
     FILE *f_stream;
     size_t file_size;
-    size_t cur_pos;
 } file_to_append;
 
 file_to_append file_to_append_open(const char *filename)
 {
-    file_to_append str = {.filename = filename, .f_stream = fopen(filename, "r"), .cur_pos = 0};
+    char *cp = strdup(filename);
+    char *base_filename = strdup(basename(cp));
+
+    free(cp);
+    file_to_append str = {.filename = base_filename, .f_stream = fopen(filename, "r")};
     if (!str.f_stream)
     {
         fprintf(stderr, "could not obtain file %s\n", filename);
@@ -131,6 +140,16 @@ file_to_append file_to_append_open(const char *filename)
     str.file_size = ftell(str.f_stream);
     fseek(str.f_stream, 0, SEEK_SET);
     return str;
+}
+
+void file_to_append_close(file_to_append *ptr)
+{
+    free(ptr->filename);
+    if (ptr->f_stream)
+    {
+        fclose(ptr->f_stream);
+    }
+    *ptr = (file_to_append){0};
 }
 
 void test_shift_data_in_file()
@@ -152,7 +171,7 @@ arch_file_header *arch_fit_files(arch_instance *inst, const file_to_append *new_
             arch_file_header hdr;
             hdr.init_size = new_files[i].file_size;
             hdr.enc_size = calc_encoded_size(new_files[i].file_size, cnf);
-            strncpy(hdr.filename, new_files->filename, arch_file_header_NAME_LEN - 1);
+            strncpy(hdr.filename, new_files[i].filename, arch_file_header_NAME_LEN - 1);
             hdr.offset = f_offset;
 
             inst->file_hdrs[i] = hdr;
@@ -160,8 +179,6 @@ arch_file_header *arch_fit_files(arch_instance *inst, const file_to_append *new_
         }
 
         inst->hdr.file_count += new_file_count;
-
-        fprintf(stdout, "inst.hdr.file_count = %d\n", inst->hdr.file_count);
         return inst->file_hdrs;
     }
 
@@ -233,10 +250,8 @@ void arch_insert_files(arch_instance *inst, const char **filenames, size_t file_
             {
                 assert(false && "fseek(inst.f, hdrs[i].offset, SEEK_SET)");
             }
-            do_file_encoding(files->f_stream, hdrs->init_size, inst->f, cnf);
+            do_file_encoding(files[i].f_stream, hdrs[i].init_size, inst->f, cnf);
         }
-
-        fprintf(stdout, "File count = %d\n", inst->hdr.file_count);
         file_write_pos(0, &inst->hdr, sizeof(arch_header), inst->f);
         file_write_pos(sizeof(arch_header), inst->file_hdrs, sizeof(arch_file_header) * inst->hdr.file_count, inst->f);
         break;
@@ -244,20 +259,33 @@ void arch_insert_files(arch_instance *inst, const char **filenames, size_t file_
 
     for (size_t i = 0; i < file_count; ++i)
     {
-        if (files[i].f_stream)
-        {
-            fclose(files[i].f_stream);
-        }
+        file_to_append_close(&files[i]);
     }
     free(files);
 }
 
-void arch_extract_files(arch_instance *inst, const char *prefix)
+void arch_extract_files(arch_instance *inst, const char *prefix, config cnf)
 {
+    (void)prefix;
 
-
-    
-
+    for (size_t i = 0; i < inst->hdr.file_count; ++i)
+    {
+        const arch_file_header *hdr = &inst->file_hdrs[i];
+        char filename[150] = {0};
+        snprintf(filename, 150, "%s/%lu_%s", prefix, i, hdr->filename);
+        FILE *f = fopen(filename, "w");
+        if (!f)
+        {
+            fprintf(stderr, "Could not create file to extract: %s\n", filename);
+            continue;
+        }
+        if (fseek(inst->f, hdr->offset, SEEK_SET))
+        {
+            assert(false && "fseek(inst->f, hdr->offset, SEEK_SET)");
+        }
+        do_file_decoding((encoded_file){.file = inst->f, .src_file_len = hdr->init_size, .enc_file_len = hdr->enc_size}, f, cnf);
+        fclose(f);
+    }
 }
 
 #endif
