@@ -72,14 +72,105 @@ void test_extract()
     arch_instance_close(&inst);
 }
 
+typedef enum
+{
+    APPEND,
+} OPT_E;
+
+typedef struct
+{
+    const char *s_alias;
+    const char *l_alias;
+    const char **args;
+
+    size_t arg_count;
+
+    OPT_E num;
+} cmd_opt;
+
+bool starts_with(const char *str, const char *substr)
+{
+    return strstr(str, substr) == str;
+}
+
 int main(int argc, char **argv)
 {
 
-    test_insert();
-    test_extract();
+    cmd_opt opts[] =
+        {
+            {},
+        };
 
+    int ret_code = 0;
 
-    return 0;
+    const char *archname;
+
+    while (true)
+    {
+
+        for (int arg_i = 0; arg_i < argc; ++arg_i)
+        {
+            const char *arg = argv[arg_i];
+            if (starts_with(arg, "-"))
+            {
+
+                cmd_opt *right_opt = NULL;
+
+                for (size_t opt_i = 0; opt_i < sizeof(opts); ++opt_i)
+                {
+                    cmd_opt *opt = &opts[opt_i];
+                    if (strcmp(opt->l_alias, arg) == 0)
+                    {
+                        right_opt = opt;
+                        break;
+                    }
+                    else if (strcmp(opt->s_alias, arg) == 0)
+                    {
+                        right_opt = opt;
+                        break;
+                    }
+                }
+
+                if (!right_opt)
+                {
+                    fprintf(stderr, "Error parsing: unknown opt = %s", arg);
+                    ret_code = 69;
+                    break;
+                }
+
+                do
+                {
+                    ++arg_i;
+
+                    right_opt->args = realloc(right_opt->args, right_opt->arg_count + 1);
+                    right_opt->args[right_opt->arg_count] = argv[arg_i];
+                    right_opt->arg_count += 1;
+
+                } while (arg_i < argc && !starts_with(argv[arg_i], "-"));
+
+                if (arg_i < argc)
+                {
+                    arg_i -= 1;
+                }
+            }
+            else
+            {
+                archname = argv[arg_i];
+            }
+        }
+
+        break;
+    }
+
+    
+
+    for (int i = 0; i < argc; ++i)
+    {
+        free(opts[i].args);
+        opts[i] = (cmd_opt){0};
+    }
+
+    return ret_code;
 }
 
 /*
