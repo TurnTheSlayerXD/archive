@@ -75,6 +75,8 @@ void test_extract()
 int main(int argc, char **argv)
 {
 
+    test_insert();
+    test_extract();
 
 
     return 0;

@@ -57,7 +57,7 @@ void test_insert()
     config cnf = config_new(inst.hdr.bytes_per_read, 2);
 
     const char *filenames[] = {"test.txt", "main.c", "test.c"};
-    const size_t len = sizeof(filenames) / sizeof(const char *);
+    const len = sizeof(filenames) / sizeof(const char *);
 
     arch_insert_files(&inst, filenames, len, cnf);
     fprintf(stdout, "inst.hdr.file_count = %lu\n", inst.hdr.file_count);
@@ -74,10 +74,10 @@ void test_extract()
 
 int main(int argc, char **argv)
 {
-    (void)argc, (void)argv;
 
     test_insert();
     test_extract();
+
 
     return 0;
 }
