@@ -48,7 +48,7 @@ void arch_instance_close(arch_instance *inst)
 
 arch_instance arch_instance_create_empty(const char *path)
 {
-    FILE *f = fopen(path, "w+");
+    FILE *f = fopen(path, "w");
     if (!f)
     {
         fprintf(stderr, "arch (created) at path [%s] could not be created\n", path);

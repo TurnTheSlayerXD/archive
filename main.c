@@ -221,10 +221,11 @@ int main(int argc, char **argv)
                 }
                 else if (starts_with(arg, "--file="))
                 {
-                    right_opt = opt;
-                    right_opt->args = realloc(right_opt->args, right_opt->arg_count + 1);
-                    right_opt->args[right_opt->arg_count] = arg + sizeof("--file=");
+                    right_opt = &opts[OPT_FILE];
+                    right_opt->args = realloc(right_opt->args, (right_opt->arg_count + 1) * sizeof(char *));
+                    right_opt->args[right_opt->arg_count] = arg + sizeof("--file=") - 1;
                     right_opt->arg_count += 1;
+                    break;
                 }
             }
 
@@ -245,7 +246,7 @@ int main(int argc, char **argv)
             arg_i += 1;
             for (; arg_i < argc && !starts_with(argv[arg_i], "-"); ++arg_i)
             {
-                right_opt->args = realloc(right_opt->args, right_opt->arg_count + 1);
+                right_opt->args = realloc(right_opt->args, (right_opt->arg_count + 1) * sizeof(char *));
                 right_opt->args[right_opt->arg_count] = argv[arg_i];
                 right_opt->arg_count += 1;
             }
@@ -257,18 +258,17 @@ int main(int argc, char **argv)
         }
     }
 
-    const char *archname;
     if (!opts[OPT_FILE].appears)
     {
         fprintf(stderr, "Expected --file option\n");
         EXIT_EARLY;
     }
-    if (opts[OPT_FILE].arg_count != 1)
+    if (opts[OPT_FILE].arg_count < 1)
     {
-        fprintf(stderr, "Expected --file option to have one arg = [archname]\n");
+        fprintf(stderr, "Expected --file option to have at least one arg = [archname]\n");
         EXIT_EARLY;
     }
-    archname = opts[OPT_FILE].args[0];
+    const char *archname = opts[OPT_FILE].args[0];
 
     if (opts[OPT_CREATE].appears)
     {
