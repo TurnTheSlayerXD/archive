@@ -57,7 +57,7 @@ void test_insert()
     config cnf = config_new(inst.hdr.bytes_per_read, 2);
 
     const char *filenames[] = {"test.txt", "main.c", "test.c"};
-    const len = sizeof(filenames) / sizeof(const char *);
+    const int len = sizeof(filenames) / sizeof(const char *);
 
     arch_insert_files(&inst, filenames, len, cnf);
     fprintf(stdout, "inst.hdr.file_count = %lu\n", inst.hdr.file_count);
@@ -74,7 +74,13 @@ void test_extract()
 
 typedef enum
 {
-    APPEND,
+    OPT_CREATE,
+    OPT_FILE,
+    OPT_LIST,
+    OPT_EXTRACT,
+    OPT_APPEND,
+    OPT_DELETE,
+    OPT_CONCAT,
 } OPT_E;
 
 typedef struct
@@ -84,8 +90,9 @@ typedef struct
     const char **args;
 
     size_t arg_count;
+    bool appears;
 
-    OPT_E num;
+    OPT_E code;
 } cmd_opt;
 
 bool starts_with(const char *str, const char *substr)
@@ -98,72 +105,172 @@ int main(int argc, char **argv)
 
     cmd_opt opts[] =
         {
-            {},
+            {
+                .s_alias = "-c",
+                .l_alias = "--create",
+                .appears = false,
+                .args = NULL,
+                .arg_count = 0,
+                .code = OPT_CREATE,
+            },
+            {
+                .s_alias = "-f",
+                .l_alias = "--file",
+                .appears = false,
+                .args = NULL,
+                .arg_count = 0,
+                .code = OPT_FILE,
+            },
+            {
+                .s_alias = "-l",
+                .l_alias = "--list",
+                .appears = false,
+                .args = NULL,
+                .arg_count = 0,
+                .code = OPT_LIST,
+            },
+            {
+                .s_alias = "-x",
+                .l_alias = "--extract",
+                .appears = false,
+                .args = NULL,
+                .arg_count = 0,
+                .code = OPT_EXTRACT,
+            },
+            {
+                .s_alias = "-a",
+                .l_alias = "--append",
+                .appears = false,
+                .args = NULL,
+                .arg_count = 0,
+                .code = OPT_APPEND,
+            },
+            {
+                .s_alias = "-d",
+                .l_alias = "--delete",
+                .appears = false,
+                .args = NULL,
+                .arg_count = 0,
+                .code = OPT_DELETE,
+            },
+            {
+                .s_alias = "-A",
+                .l_alias = "--concatenate",
+                .appears = false,
+                .args = NULL,
+                .arg_count = 0,
+                .code = OPT_CONCAT,
+            },
         };
 
     int ret_code = 0;
 
-    const char *archname;
+    const char *archname = NULL;
 
-    while (true)
+    for (int arg_i = 0; arg_i < argc; ++arg_i)
     {
-
-        for (int arg_i = 0; arg_i < argc; ++arg_i)
+        const char *arg = argv[arg_i];
+        if (starts_with(arg, "-"))
         {
-            const char *arg = argv[arg_i];
-            if (starts_with(arg, "-"))
+
+            cmd_opt *right_opt = NULL;
+
+            for (size_t opt_i = 0; opt_i < sizeof(opts); ++opt_i)
             {
-
-                cmd_opt *right_opt = NULL;
-
-                for (size_t opt_i = 0; opt_i < sizeof(opts); ++opt_i)
+                cmd_opt *opt = &opts[opt_i];
+                if (strcmp(opt->l_alias, arg) == 0)
                 {
-                    cmd_opt *opt = &opts[opt_i];
-                    if (strcmp(opt->l_alias, arg) == 0)
-                    {
-                        right_opt = opt;
-                        break;
-                    }
-                    else if (strcmp(opt->s_alias, arg) == 0)
-                    {
-                        right_opt = opt;
-                        break;
-                    }
-                }
-
-                if (!right_opt)
-                {
-                    fprintf(stderr, "Error parsing: unknown opt = %s", arg);
-                    ret_code = 69;
+                    right_opt = opt;
                     break;
                 }
-
-                do
+                else if (strcmp(opt->s_alias, arg) == 0)
                 {
-                    ++arg_i;
-
-                    right_opt->args = realloc(right_opt->args, right_opt->arg_count + 1);
-                    right_opt->args[right_opt->arg_count] = argv[arg_i];
-                    right_opt->arg_count += 1;
-
-                } while (arg_i < argc && !starts_with(argv[arg_i], "-"));
-
-                if (arg_i < argc)
-                {
-                    arg_i -= 1;
+                    right_opt = opt;
+                    break;
                 }
             }
-            else
-            {
-                archname = argv[arg_i];
-            }
-        }
 
-        break;
+            if (!right_opt)
+            {
+                fprintf(stderr, "Error parsing: unknown opt = %s", arg);
+                ret_code = 69;
+                goto early_exit;
+            }
+
+            right_opt->appears = true;
+
+            do
+            {
+                ++arg_i;
+
+                right_opt->args = realloc(right_opt->args, right_opt->arg_count + 1);
+                right_opt->args[right_opt->arg_count] = argv[arg_i];
+                right_opt->arg_count += 1;
+            } while (arg_i < argc && !starts_with(argv[arg_i], "-"));
+
+            arg_i -= 1;
+        }
+        else
+        {
+            if (archname)
+            {
+                fprintf(stderr, "Arch name was already mentioned, prev value = %s, next value = %s", archname, argv[arg_i]);
+                ret_code = 69;
+                goto early_exit;
+            }
+            archname = argv[arg_i];
+        }
     }
 
-    
+    for (size_t i = 0; i < sizeof(opts) / sizeof(cmd_opt); ++i)
+    {
+        const cmd_opt *opt = &opts[i];
+        if (!opt->appears)
+        {
+            continue;
+        }
 
+        switch (opt->code)
+        {
+
+        case OPT_CREATE:
+        {
+            
+            break;
+        }
+        case OPT_APPEND:
+        {
+            break;
+        }
+        case OPT_CONCAT:
+        {
+            break;
+        }
+        case OPT_DELETE:
+        {
+            break;
+        }
+        case OPT_EXTRACT:
+        {
+            break;
+        }
+        case OPT_FILE:
+        {
+            break;
+        }
+        case OPT_LIST:
+        {
+            break;
+        }
+
+        default:
+        {
+            break;
+        }
+        }
+    }
+
+early_exit:
     for (int i = 0; i < argc; ++i)
     {
         free(opts[i].args);
