@@ -10,6 +10,8 @@
 
 #include "arch_instance.h"
 
+#define COUNT_OF(x) ((sizeof(x) / sizeof(0 [x])) / ((size_t)(!(sizeof(x) % sizeof(0 [x])))))
+
 void test_hamming()
 {
 
@@ -57,7 +59,7 @@ void test_insert()
     config cnf = config_new(inst.hdr.bytes_per_read, 2);
 
     const char *filenames[] = {"test.txt", "main.c", "test.c"};
-    const int len = sizeof(filenames) / sizeof(const char *);
+    const int len = COUNT_OF(filenames);
 
     arch_insert_files(&inst, filenames, len, cnf);
     fprintf(stdout, "inst.hdr.file_count = %lu\n", inst.hdr.file_count);
@@ -95,13 +97,44 @@ typedef struct
     OPT_E code;
 } cmd_opt;
 
+#define EXIT_EARLY \
+    ret_code = 69; \
+    goto early_exit;
+
 bool starts_with(const char *str, const char *substr)
 {
     return strstr(str, substr) == str;
 }
 
+bool check_no_args(const cmd_opt *restrict all, size_t all_len, const OPT_E *restrict except, size_t except_len)
+{
+    for (size_t opt_i = 0; opt_i < all_len; ++opt_i)
+    {
+        bool exists_in_except = false;
+        const cmd_opt *cur_opt = &all[opt_i];
+
+        for (size_t j = 0; j < except_len; ++j)
+        {
+            if (except[j] == cur_opt->code)
+            {
+                exists_in_except = true;
+                break;
+            }
+        }
+
+        if (!exists_in_except && cur_opt->appears)
+        {
+            fprintf(stderr, "Unexpected argument: %s\n", cur_opt->s_alias);
+            return false;
+        }
+    }
+    return true;
+}
+
 int main(int argc, char **argv)
 {
+    argc -= 1;
+    argv += 1;
 
     cmd_opt opts[] =
         {
@@ -165,8 +198,6 @@ int main(int argc, char **argv)
 
     int ret_code = 0;
 
-    const char *archname = NULL;
-
     for (int arg_i = 0; arg_i < argc; ++arg_i)
     {
         const char *arg = argv[arg_i];
@@ -175,7 +206,7 @@ int main(int argc, char **argv)
 
             cmd_opt *right_opt = NULL;
 
-            for (size_t opt_i = 0; opt_i < sizeof(opts); ++opt_i)
+            for (size_t opt_i = 0; opt_i < COUNT_OF(opts); ++opt_i)
             {
                 cmd_opt *opt = &opts[opt_i];
                 if (strcmp(opt->l_alias, arg) == 0)
@@ -188,39 +219,98 @@ int main(int argc, char **argv)
                     right_opt = opt;
                     break;
                 }
+                else if (starts_with(arg, "--file="))
+                {
+                    right_opt = opt;
+                    right_opt->args = realloc(right_opt->args, right_opt->arg_count + 1);
+                    right_opt->args[right_opt->arg_count] = arg + sizeof("--file=");
+                    right_opt->arg_count += 1;
+                }
             }
 
             if (!right_opt)
             {
                 fprintf(stderr, "Error parsing: unknown opt = %s", arg);
-                ret_code = 69;
-                goto early_exit;
+                EXIT_EARLY;
+            }
+
+            if (right_opt->appears)
+            {
+                fprintf(stderr, "Error: options cannot repeat more than once.\nRepeated opt: %s\n", right_opt->l_alias);
+                EXIT_EARLY;
             }
 
             right_opt->appears = true;
 
-            do
+            arg_i += 1;
+            for (; arg_i < argc && !starts_with(argv[arg_i], "-"); ++arg_i)
             {
-                ++arg_i;
-
                 right_opt->args = realloc(right_opt->args, right_opt->arg_count + 1);
                 right_opt->args[right_opt->arg_count] = argv[arg_i];
                 right_opt->arg_count += 1;
-            } while (arg_i < argc && !starts_with(argv[arg_i], "-"));
-
+            }
             arg_i -= 1;
         }
         else
         {
-            if (archname)
-            {
-                fprintf(stderr, "Arch name was already mentioned, prev value = %s, next value = %s", archname, argv[arg_i]);
-                ret_code = 69;
-                goto early_exit;
-            }
-            archname = argv[arg_i];
+            fprintf(stdout, "Ignoring argument - %s\n", arg);
         }
     }
+
+    const char *archname;
+    if (!opts[OPT_FILE].appears)
+    {
+        fprintf(stderr, "Expected --file option\n");
+        EXIT_EARLY;
+    }
+    if (opts[OPT_FILE].arg_count != 1)
+    {
+        fprintf(stderr, "Expected --file option to have one arg = [archname]\n");
+        EXIT_EARLY;
+    }
+    archname = opts[OPT_FILE].args[0];
+
+    if (opts[OPT_CREATE].appears)
+    {
+        if (opts[OPT_CREATE].arg_count != 0)
+        {
+            fprintf(stderr, "Expected --create option to have one ZERO args\n");
+            EXIT_EARLY;
+        }
+
+        OPT_E allowed[] = {OPT_CREATE, OPT_FILE};
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        {
+            EXIT_EARLY;
+        }
+
+        arch_instance inst = arch_instance_create_empty(archname);
+        if (!inst.f)
+        {
+            EXIT_EARLY;
+        }
+        config cnf = config_new(inst.hdr.bytes_per_read, 2);
+        if (opts[OPT_FILE].arg_count < 2)
+        {
+            fprintf(stdout, "No files passed to insert to archive [%s]\n", archname);
+            goto early_exit;
+        }
+
+        arch_insert_files(&inst, opts[OPT_FILE].args + 1, opts[OPT_FILE].arg_count - 1, cnf);
+        arch_instance_close(&inst);
+    }
+
+early_exit:
+    for (int i = 0; i < argc; ++i)
+    {
+        free(opts[i].args);
+        opts[i] = (cmd_opt){0};
+    }
+
+    return ret_code;
+}
+
+/*
 
     for (size_t i = 0; i < sizeof(opts) / sizeof(cmd_opt); ++i)
     {
@@ -235,7 +325,7 @@ int main(int argc, char **argv)
 
         case OPT_CREATE:
         {
-            
+
             break;
         }
         case OPT_APPEND:
@@ -269,16 +359,7 @@ int main(int argc, char **argv)
         }
         }
     }
-
-early_exit:
-    for (int i = 0; i < argc; ++i)
-    {
-        free(opts[i].args);
-        opts[i] = (cmd_opt){0};
-    }
-
-    return ret_code;
-}
+*/
 
 /*
 

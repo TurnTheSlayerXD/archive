@@ -46,6 +46,30 @@ void arch_instance_close(arch_instance *inst)
     *inst = (arch_instance){0};
 }
 
+arch_instance arch_instance_create_empty(const char *path)
+{
+    FILE *f = fopen(path, "w+");
+    if (!f)
+    {
+        fprintf(stderr, "arch (created) at path [%s] could not be created\n", path);
+        return (arch_instance){0};
+    }
+    arch_header hdr = {.file_count = 0, .id = "HAM", .free_file_count = 0, .bytes_per_read = 100};
+    arch_instance inst = {
+        .f = f,
+        .name = path,
+        .hdr = hdr,
+        .file_hdrs = NULL,
+    };
+    if (fwrite(&hdr, sizeof(arch_header), 1, f) != 1)
+    {
+        fprintf(stderr, "arch (created) at path [%s] could not be written with header\n", path);
+        return (arch_instance){0};
+    }
+
+    return inst;
+}
+
 arch_instance arch_instance_create(const char *path, bool should_exist)
 {
     if (access(path, F_OK) == 0 || should_exist)
@@ -95,26 +119,8 @@ arch_instance arch_instance_create(const char *path, bool should_exist)
         }
         return inst;
     }
-    FILE *f = fopen(path, "w+");
-    if (!f)
-    {
-        fprintf(stderr, "arch (created) at path [%s] could not be created\n", path);
-        return (arch_instance){0};
-    }
-    arch_header hdr = {.file_count = 0, .id = "HAM", .free_file_count = 0, .bytes_per_read = 100};
-    arch_instance inst = {
-        .f = f,
-        .name = path,
-        .hdr = hdr,
-        .file_hdrs = NULL,
-    };
-    if (fwrite(&hdr, sizeof(arch_header), 1, f) != 1)
-    {
-        fprintf(stderr, "arch (created) at path [%s] could not be written with header\n", path);
-        return (arch_instance){0};
-    }
 
-    return inst;
+    return arch_instance_create_empty(path);
 }
 
 typedef struct
