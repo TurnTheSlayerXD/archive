@@ -4,10 +4,10 @@
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 #include "hamming.h"
 #include "encoding_decoding.h"
-
 #include "arch_instance.h"
 
 #define COUNT_OF(x) ((sizeof(x) / sizeof(0 [x])) / ((size_t)(!(sizeof(x) % sizeof(0 [x])))))
@@ -70,7 +70,8 @@ void test_extract()
 {
     arch_instance inst = arch_instance_create("test.ham", true);
     config cnf = config_new(inst.hdr.bytes_per_read, 2);
-    arch_extract_files(&inst, "./testdir", cnf);
+    const char *files[] = {""};
+    arch_extract_files(&inst, "./testdir", files, COUNT_OF(files), cnf);
     arch_instance_close(&inst);
 }
 
@@ -272,15 +273,15 @@ int main(int argc, char **argv)
 
     if (opts[OPT_CREATE].appears)
     {
-        if (opts[OPT_CREATE].arg_count != 0)
-        {
-            fprintf(stderr, "Expected --create option to have one ZERO args\n");
-            EXIT_EARLY;
-        }
-
         OPT_E allowed[] = {OPT_CREATE, OPT_FILE};
         if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
         {
+            EXIT_EARLY;
+        }
+
+        if (opts[OPT_CREATE].arg_count != 0)
+        {
+            fprintf(stderr, "Expected --create option to have one ZERO args\n");
             EXIT_EARLY;
         }
 
@@ -298,6 +299,90 @@ int main(int argc, char **argv)
 
         arch_insert_files(&inst, opts[OPT_FILE].args + 1, opts[OPT_FILE].arg_count - 1, cnf);
         arch_instance_close(&inst);
+    }
+    else if (opts[OPT_EXTRACT].appears)
+    {
+        OPT_E allowed[] = {OPT_EXTRACT, OPT_FILE};
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        {
+            EXIT_EARLY;
+        }
+
+        arch_instance inst = arch_instance_create(archname, true);
+        if (!inst.f)
+        {
+            EXIT_EARLY;
+        }
+        config cnf = config_new(inst.hdr.bytes_per_read, 2);
+
+        char dir[100] = "./dir_";
+        strncat(dir, archname, 100 - 1);
+        struct stat st = {0};
+        if (stat(dir, &st) == -1)
+        {
+            mkdir(dir, 0700);
+        }
+        arch_extract_files(&inst, dir, opts[OPT_EXTRACT].args, opts[OPT_EXTRACT].arg_count, cnf);
+        arch_instance_close(&inst);
+    }
+    else if (opts[OPT_DELETE].appears)
+    {
+        OPT_E allowed[] = {OPT_DELETE, OPT_FILE};
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        {
+            EXIT_EARLY;
+        }
+
+        arch_instance inst = arch_instance_create(archname, true);
+        if (!inst.f)
+        {
+            EXIT_EARLY;
+        }
+        config cnf = config_new(inst.hdr.bytes_per_read, 2);
+        arch_delete_files(&inst, opts[OPT_DELETE].args, opts[OPT_DELETE].arg_count, cnf);
+        arch_instance_close(&inst);
+    }
+    else if (opts[OPT_LIST].appears)
+    {
+        OPT_E allowed[] = {OPT_LIST, OPT_FILE};
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        {
+            EXIT_EARLY;
+        }
+
+        arch_instance inst = arch_instance_create(archname, true);
+        if (!inst.f)
+        {
+            EXIT_EARLY;
+        }
+        config cnf = config_new(inst.hdr.bytes_per_read, 2);
+        arch_list_files(&inst);
+        arch_instance_close(&inst);
+    }
+    else if (opts[OPT_CONCAT].appears)
+    {
+        OPT_E allowed[] = {OPT_CONCAT, OPT_FILE};
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        {
+            EXIT_EARLY;
+        }
+        arch_instance inst = arch_instance_create(archname, true);
+        if (!inst.f)
+        {
+            EXIT_EARLY;
+        }
+        config cnf = config_new(inst.hdr.bytes_per_read, 2);
+        arch_instance *inst_arr;
+        arch_concat_archives(inst_arr, inst_arr_len, cnf);
+        arch_instance_close(&inst);
+    }
+    else if (opts[OPT_APPEND].appears)
+    {
+        OPT_E allowed[] = {OPT_APPEND, OPT_FILE};
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        {
+            EXIT_EARLY;
+        }
     }
 
 early_exit:

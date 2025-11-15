@@ -162,7 +162,7 @@ void test_shift_data_in_file()
 {
 }
 
-arch_file_header *arch_fit_files(arch_instance *inst, const file_to_append *new_files, size_t new_file_count, config cnf)
+arch_file_header *arch_get_new_headers(arch_instance *inst, const file_to_append *new_files, size_t new_file_count, config cnf)
 {
     assert(new_file_count > 0);
 
@@ -249,14 +249,14 @@ void arch_insert_files(arch_instance *inst, const char **filenames, size_t file_
                 break;
             }
         }
-        arch_file_header *hdrs = arch_fit_files(inst, files, file_count, cnf);
+        arch_file_header *new_hdrs = arch_get_new_headers(inst, files, file_count, cnf);
         for (size_t i = 0; i < file_count; ++i)
         {
-            if (fseek(inst->f, hdrs[i].offset, SEEK_SET))
+            if (fseek(inst->f, new_hdrs[i].offset, SEEK_SET))
             {
                 assert(false && "fseek(inst.f, hdrs[i].offset, SEEK_SET)");
             }
-            do_file_encoding(files[i].f_stream, hdrs[i].init_size, inst->f, cnf);
+            do_file_encoding(files[i].f_stream, new_hdrs[i].init_size, inst->f, cnf);
         }
         file_write_pos(0, &inst->hdr, sizeof(arch_header), inst->f);
         file_write_pos(sizeof(arch_header), inst->file_hdrs, sizeof(arch_file_header) * inst->hdr.file_count, inst->f);
@@ -270,28 +270,61 @@ void arch_insert_files(arch_instance *inst, const char **filenames, size_t file_
     free(files);
 }
 
-void arch_extract_files(arch_instance *inst, const char *prefix, config cnf)
+bool __arch_extract_single(arch_instance *inst, const arch_file_header *hdr, const char *dir, config cnf)
 {
-    (void)prefix;
-
-    for (size_t i = 0; i < inst->hdr.file_count; ++i)
+    char fin_name[150] = {0};
+    snprintf(fin_name, 150, "%s/%s", dir, hdr->filename);
+    FILE *f = fopen(fin_name, "w");
+    if (!f)
     {
-        const arch_file_header *hdr = &inst->file_hdrs[i];
-        char filename[150] = {0};
-        snprintf(filename, 150, "%s/%lu_%s", prefix, i, hdr->filename);
-        FILE *f = fopen(filename, "w");
-        if (!f)
+        fprintf(stderr, "Could not create file to extract: %s\n", fin_name);
+        return false;
+    }
+    if (fseek(inst->f, hdr->offset, SEEK_SET))
+    {
+        assert(false && "fseek(inst->f, hdr->offset, SEEK_SET)");
+    }
+    do_file_decoding((encoded_file){.file = inst->f, .src_file_len = hdr->init_size, .enc_file_len = hdr->enc_size}, f, cnf);
+    fclose(f);
+    return true;
+}
+
+void arch_extract_files(arch_instance *inst, const char *dir, const char **files, size_t files_len, config cnf)
+{
+    if (files_len == 0)
+    {
+        for (size_t i = 0; i < inst->hdr.file_count; ++i)
         {
-            fprintf(stderr, "Could not create file to extract: %s\n", filename);
+            __arch_extract_single(inst, &inst->file_hdrs[i], dir, cnf);
+        }
+        return;
+    }
+
+    for (size_t name_i = 0; name_i < files_len; ++name_i)
+    {
+        const arch_file_header *hdr = NULL;
+        for (size_t i = 0; i < inst->hdr.file_count; ++i)
+        {
+            if (strcmp(inst->file_hdrs[i].filename, files[name_i]) == 0)
+            {
+                hdr = &inst->file_hdrs[i];
+                break;
+            }
+        }
+
+        if (!hdr)
+        {
+            fprintf(stderr, "No file [%s] in archive [%s]", files[name_i], inst->name);
             continue;
         }
-        if (fseek(inst->f, hdr->offset, SEEK_SET))
-        {
-            assert(false && "fseek(inst->f, hdr->offset, SEEK_SET)");
-        }
-        do_file_decoding((encoded_file){.file = inst->f, .src_file_len = hdr->init_size, .enc_file_len = hdr->enc_size}, f, cnf);
-        fclose(f);
+        __arch_extract_single(inst, hdr, dir, cnf);
     }
 }
+
+void arch_delete_files(arch_instance *inst, const char **files, size_t files_len, config cnf);
+
+void arch_concat_archs(arch_instance *inst_arr, size_t inst_arr_len, config *config);
+
+
 
 #endif
