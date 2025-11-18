@@ -321,10 +321,62 @@ void arch_extract_files(arch_instance *inst, const char *dir, const char **files
     }
 }
 
-void arch_delete_files(arch_instance *inst, const char **files, size_t files_len, config cnf);
+void arch_delete_files(arch_instance *inst, const char **files, size_t files_len, const char *dir, config cnf)
+{
+    for (size_t i = 0; i < files_len; ++i)
+    {
+        const char *fname = &files[i];
+
+        arch_file_header *hdr = NULL;
+        for (size_t hdr_i = 0; hdr_i < inst->hdr.file_count; ++hdr_i)
+        {
+            if (strcmp(inst->file_hdrs[hdr_i].filename, fname) == 0)
+            {
+                hdr = &inst->file_hdrs[hdr_i];
+                break;
+            }
+        }
+        if (!hdr)
+        {
+            fprintf(stderr, "Could not locate file [%s] to delete", fname);
+            continue;
+        }
+
+        const size_t offset = hdr->offset;
+
+        const size_t arch_size = file_size(inst->f);
+
+        char buf[100];
+        snprintf(buf, 99, "%s/%s", dir, fname);
+        FILE *dst = fopen(buf, "w");
+
+        char *buf = malloc(cnf.BYTES_per_chunk);
+
+        for (size_t pos = offset; pos < arch_size; pos += cnf.BYTES_per_chunk)
+        {
+            file_read_pos(pos, buf, offset, inst->f);
+            if (fwrite(buf, cnf.BYTES_per_chunk, 1, dst) != 1)
+            {
+                fprintf(stderr, "COuld not write chunk of data with size %lu from archive %s to %s", cnf.BYTES_per_chunk, inst->name, fname);
+                continue;
+            }
+        }
+
+        if (arch_size % offset > 0)
+        {
+            size_t n_rest = arch_size % offset;
+            file_read_pos(arch_size - n_rest, buf, n_rest, inst->f);
+            if (fwrite(buf, n_rest, 1, dst) != 1)
+            {
+                fprintf(stderr, "COuld not write chunk of data with size %lu from archive %s to %s", n_rest, inst->name, fname);
+                continue;
+            }
+        }
+
+        free(buf);
+    }
+}
 
 void arch_concat_archs(arch_instance *inst_arr, size_t inst_arr_len, config *config);
-
-
 
 #endif

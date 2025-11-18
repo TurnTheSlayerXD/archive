@@ -356,6 +356,13 @@ int main(int argc, char **argv)
             EXIT_EARLY;
         }
         config cnf = config_new(inst.hdr.bytes_per_read, 2);
+
+        fprintf(stdout, "Files:\n\r");
+        for (size_t i = 0; i < inst.hdr.file_count; ++i)
+        {
+            fprintf(stdout, "%s\n\r", inst.file_hdrs[i].filename);
+        }
+
         arch_list_files(&inst);
         arch_instance_close(&inst);
     }
@@ -383,7 +390,17 @@ int main(int argc, char **argv)
         {
             EXIT_EARLY;
         }
+        if (opts[OPT_FILE].arg_count != 1)
+        {
+            fprintf(stderr, "Expected archive name\n");
+            EXIT_EARLY;
+        }
+        arch_instance inst = arch_instance_create(opts[OPT_FILE].args[0], false);
+        config cnf = config_new(inst.hdr.bytes_per_read, 2);
+        arch_insert_files(&inst, opts[OPT_APPEND].args, opts[OPT_APPEND].arg_count, cnf);
+        arch_instance_close(&inst);
     }
+
 
 early_exit:
     for (int i = 0; i < argc; ++i)
@@ -394,88 +411,3 @@ early_exit:
 
     return ret_code;
 }
-
-/*
-
-    for (size_t i = 0; i < sizeof(opts) / sizeof(cmd_opt); ++i)
-    {
-        const cmd_opt *opt = &opts[i];
-        if (!opt->appears)
-        {
-            continue;
-        }
-
-        switch (opt->code)
-        {
-
-        case OPT_CREATE:
-        {
-
-            break;
-        }
-        case OPT_APPEND:
-        {
-            break;
-        }
-        case OPT_CONCAT:
-        {
-            break;
-        }
-        case OPT_DELETE:
-        {
-            break;
-        }
-        case OPT_EXTRACT:
-        {
-            break;
-        }
-        case OPT_FILE:
-        {
-            break;
-        }
-        case OPT_LIST:
-        {
-            break;
-        }
-
-        default:
-        {
-            break;
-        }
-        }
-    }
-*/
-
-/*
-
-
-    if (argc >= 2)
-    {
-
-        if (strcmp(argv[0], "-f"))
-        {
-            const char *path = argv[1];
-
-            printf("provided path to file is %s\n", path);
-
-            FILE *f_hndl = fopen(path, "rb");
-
-            if (!f_hndl)
-            {
-                fprintf(stderr, "No such file: %s\n", path);
-                return 69;
-            }
-
-            long begin = ftell(f_hndl);
-            fseek(f_hndl, 0, SEEK_END);
-            long end = ftell(f_hndl);
-
-            fprintf(stdout, "length of file %s in bytes is %ld\n", path, end - begin);
-        }
-    }
-    else
-    {
-        fprintf(stderr, "expected args count to be 2\n");
-        return 69;
-    }
-*/
