@@ -512,33 +512,6 @@ void arch_concat_archs(const char *dst_name, arch_array archs)
 
             arch_insert_files(&dst_inst, (string_array){.arr = fnames.arr, .len = fnames.len});
             string_array_to_free_close(&fnames);
-
-            // void *buf = malloc(cur_cnf.enc_BYTES_per_chunk);
-            //  for (size_t i = 0; i + cur_cnf.enc_BYTES_per_chunk < cur_file->enc_size; i += cur_cnf.enc_BYTES_per_chunk)
-            //  {
-            //      if (fwrite(buf, cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
-            //      {
-            //          fprintf(stderr, "Failed writing %s\n", cur_arch->name);
-            //          continue;
-            //      }
-            //  }
-            //  if (cur_file->enc_size % cur_cnf.enc_BYTES_per_chunk == 0)
-            //  {
-            //      if (fwrite(buf, cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
-            //      {
-            //          fprintf(stderr, "Failed writing %s\n", cur_arch->name);
-            //          continue;
-            //      }
-            //  }
-            //  else
-            //  {
-            //      if (fwrite(buf, cur_file->enc_size % cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
-            //      {
-            //          fprintf(stderr, "Failed writing %s\n", cur_arch->name);
-            //          continue;
-            //      }
-            //  }
-            // free(buf);
         }
     }
 
