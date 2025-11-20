@@ -70,6 +70,13 @@ void file_read_pos(int64_t pos, void *dst, size_t data_size, FILE *f)
 #define SHIFT_CHUNK_SIZE 100ll
 void right_shift_file(int64_t end_off, int64_t start_off, int64_t n_shift, FILE *restrict f)
 {
+#define DEBUG
+
+#ifdef DEBUG
+    void *p = malloc(end_off - start_off);
+    file_read_pos(start_off, p, end_off - start_off, f);
+#endif
+
     assert(end_off > start_off);
 
     char buf[SHIFT_CHUNK_SIZE] = {0};
@@ -79,7 +86,7 @@ void right_shift_file(int64_t end_off, int64_t start_off, int64_t n_shift, FILE 
         file_write_pos(end_off + i * SHIFT_CHUNK_SIZE, buf, SHIFT_CHUNK_SIZE, f);
     }
 
-    for (int64_t chunk_counter = (end_off - start_off) / SHIFT_CHUNK_SIZE; chunk_counter > 0; --chunk_counter)
+    for (int64_t chunk_counter = 1; chunk_counter <= (end_off - start_off) / SHIFT_CHUNK_SIZE; ++chunk_counter)
     {
         int64_t pos = end_off - chunk_counter * SHIFT_CHUNK_SIZE;
         file_read_pos(pos, buf, SHIFT_CHUNK_SIZE, f);
@@ -94,6 +101,16 @@ void right_shift_file(int64_t end_off, int64_t start_off, int64_t n_shift, FILE 
     int64_t pos = start_off;
     file_read_pos(pos, buf, rest_size, f);
     file_write_pos(n_shift + pos, buf, rest_size, f);
+
+#ifdef DEBUG
+    void *s = malloc(end_off - start_off);
+    file_read_pos(start_off + n_shift, s, end_off - start_off, f);
+
+    assert(memcmp(p, s, end_off - start_off) == 0);
+
+    free(p);
+    free(s);
+#endif
 }
 
 void left_shift_file(int64_t end_off, int64_t start_off, int64_t n_shift, FILE *restrict f)
@@ -116,7 +133,7 @@ void left_shift_file(int64_t end_off, int64_t start_off, int64_t n_shift, FILE *
         return;
     }
 
-    int64_t pos = start_off + ((end_off - start_off) / SHIFT_CHUNK_SIZE) * SHIFT_CHUNK_SIZE;
+    int64_t pos = end_off - (end_off - start_off) % SHIFT_CHUNK_SIZE;
     file_read_pos(pos, buf, rest_size, f);
     file_write_pos(-n_shift + pos, buf, rest_size, f);
 }
