@@ -44,7 +44,7 @@ typedef struct
 
 typedef struct
 {
-    const char **arr;
+    const char ** arr;
     size_t len;
 } string_array;
 
@@ -129,7 +129,7 @@ arch_instance arch_instance_create(const char *path, bool should_exist)
         }
         if (hdr.bytes_per_read == 0)
         {
-            fprintf(stderr, "arch (updated) Invalid bytes per chunk value = %d in arch %s\n", hdr.bytes_per_read, path);
+            fprintf(stderr, "arch (updated) Invalid bytes per chunk value = %lu in arch %s\n", hdr.bytes_per_read, path);
             return (arch_instance){0};
         }
 
@@ -197,10 +197,6 @@ void file_to_append_close(file_to_append *ptr)
         fclose(ptr->f_stream);
     }
     *ptr = (file_to_append){0};
-}
-
-void test_shift_data_in_file()
-{
 }
 
 typedef struct
@@ -344,16 +340,17 @@ char *__arch_extract_single(arch_instance *inst, const arch_file_header *hdr, co
 
 string_array_to_free arch_extract_files(arch_instance *inst, const char *dir, string_array filenames)
 {
-    string_array_to_free result_fnames = {.arr = calloc(filenames.len, sizeof(char *)), .len = filenames.len};
     if (filenames.len == 0)
     {
+        string_array_to_free result_fnames = {.arr = calloc(inst->hdr.file_count, sizeof(char *)), .len = inst->hdr.file_count};
         for (size_t i = 0; i < inst->hdr.file_count; ++i)
         {
             result_fnames.arr[i] = __arch_extract_single(inst, &inst->file_hdrs[i], dir);
         }
-        return;
+        return result_fnames;
     }
 
+    string_array_to_free result_fnames = {.arr = calloc(filenames.len, sizeof(char *)), .len = filenames.len};
     for (size_t name_i = 0; name_i < filenames.len; ++name_i)
     {
         const arch_file_header *hdr = NULL;
@@ -373,13 +370,17 @@ string_array_to_free arch_extract_files(arch_instance *inst, const char *dir, st
         }
         __arch_extract_single(inst, hdr, dir);
     }
+
+    return result_fnames;
 }
 
 void arch_delete_files(arch_instance *inst, string_array filenames, const char *dir)
 {
+    arch_extract_files(inst, dir, filenames);
+
     for (size_t i = 0; i < filenames.len; ++i)
     {
-        const char *fname = &filenames.arr[i];
+        const char *fname = filenames.arr[i];
 
         arch_file_header *hdr = NULL;
         size_t hdr_index;
@@ -397,38 +398,6 @@ void arch_delete_files(arch_instance *inst, string_array filenames, const char *
             fprintf(stderr, "Could not locate file [%s] to delete", fname);
             continue;
         }
-
-        const size_t offset = hdr->offset;
-
-        const size_t arch_size = file_size(inst->f);
-
-        char buf[100];
-        snprintf(buf, 99, "%s/%s", dir, fname);
-        FILE *dst = fopen(buf, "w");
-
-        config cnf = inst->cnf;
-        char *buf = malloc(cnf.BYTES_per_chunk);
-
-        for (size_t pos = offset; pos < arch_size; pos += cnf.BYTES_per_chunk)
-        {
-            file_read_pos(pos, buf, offset, inst->f);
-            if (fwrite(buf, cnf.BYTES_per_chunk, 1, dst) != 1)
-            {
-                fprintf(stderr, "COuld not write chunk of data with size %lu from archive %s to %s", cnf.BYTES_per_chunk, inst->name, fname);
-                continue;
-            }
-        }
-
-        if (arch_size % offset > 0)
-        {
-            size_t n_rest = arch_size % offset;
-            file_read_pos(arch_size - n_rest, buf, n_rest, inst->f);
-            if (fwrite(buf, n_rest, 1, dst) != 1)
-            {
-                fprintf(stderr, "COuld not write chunk of data with size %lu from archive %s to %s", n_rest, inst->name, fname);
-            }
-        }
-        free(buf);
 
         if (hdr_index == inst->hdr.file_count - 1)
         {
@@ -493,7 +462,6 @@ void arch_concat_archs(const char *dst_name, arch_array archs)
     for (size_t arch_i = 0; arch_i < archs.len; ++arch_i)
     {
         arch_instance *cur_arch = &archs.arr[arch_i];
-        config cur_cnf = archs.arr[arch_i].cnf;
         for (size_t file_i = 0; file_i < cur_arch->hdr.file_count; ++file_i)
         {
             arch_file_header *cur_file = &cur_arch->file_hdrs[file_i];
@@ -502,45 +470,61 @@ void arch_concat_archs(const char *dst_name, arch_array archs)
                 fprintf(stderr, "Failed seeking, arch: %s, file_index: %lu\n", cur_arch->name, file_i);
                 continue;
             }
-
             const char *temp_dir = "_temp";
-
             mkdir_if_no(temp_dir);
 
-            void *buf = malloc(cur_cnf.enc_BYTES_per_chunk);
-            arch_extract_files(cur_arch, temp_dir, (string_array){0});
+            string_array_to_free fnames = arch_extract_files(cur_arch, temp_dir, (string_array){0});
 
-            arch_insert_files(dst_inst, )
-                // for (size_t i = 0; i + cur_cnf.enc_BYTES_per_chunk < cur_file->enc_size; i += cur_cnf.enc_BYTES_per_chunk)
-                // {
-                //     if (fwrite(buf, cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
-                //     {
-                //         fprintf(stderr, "Failed writing %s\n", cur_arch->name);
-                //         continue;
-                //     }
-                // }
-                // if (cur_file->enc_size % cur_cnf.enc_BYTES_per_chunk == 0)
-                // {
-                //     if (fwrite(buf, cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
-                //     {
-                //         fprintf(stderr, "Failed writing %s\n", cur_arch->name);
-                //         continue;
-                //     }
-                // }
-                // else
-                // {
-                //     if (fwrite(buf, cur_file->enc_size % cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
-                //     {
-                //         fprintf(stderr, "Failed writing %s\n", cur_arch->name);
-                //         continue;
-                //     }
-                // }
+            fprintf(stdout, "Extracted files from arch %s:\n", cur_arch->name);
+            for (size_t i = 0; i < fnames.len; ++i)
+            {
+                if (fnames.arr[i])
+                {
+                    fprintf(stdout, "Extracted file [%s]\n", fnames.arr[i]);
+                }
+            }
+            
+            arch_insert_files(&dst_inst, (string_array){.arr = (const char**)fnames.arr, .len = fnames.len});
+            string_array_to_free_close(&fnames);
 
-                free(buf);
+            // void *buf = malloc(cur_cnf.enc_BYTES_per_chunk);
+            //  for (size_t i = 0; i + cur_cnf.enc_BYTES_per_chunk < cur_file->enc_size; i += cur_cnf.enc_BYTES_per_chunk)
+            //  {
+            //      if (fwrite(buf, cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
+            //      {
+            //          fprintf(stderr, "Failed writing %s\n", cur_arch->name);
+            //          continue;
+            //      }
+            //  }
+            //  if (cur_file->enc_size % cur_cnf.enc_BYTES_per_chunk == 0)
+            //  {
+            //      if (fwrite(buf, cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
+            //      {
+            //          fprintf(stderr, "Failed writing %s\n", cur_arch->name);
+            //          continue;
+            //      }
+            //  }
+            //  else
+            //  {
+            //      if (fwrite(buf, cur_file->enc_size % cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
+            //      {
+            //          fprintf(stderr, "Failed writing %s\n", cur_arch->name);
+            //          continue;
+            //      }
+            //  }
+            // free(buf);
         }
     }
 
     arch_instance_close(&dst_inst);
+}
+
+void arch_list_files(const arch_instance *inst)
+{
+    for (size_t i = 0; i < inst->hdr.file_count; ++i)
+    {
+        fprintf(stdout, "%s\n\r", inst->file_hdrs[i].filename);
+    }
 }
 
 #endif

@@ -56,12 +56,10 @@ void test_insert()
         fprintf(stderr, "Failed opening or creating archive");
         return;
     }
-    config cnf = config_new(inst.hdr.bytes_per_read, 2);
 
-    const char *filenames[] = {"test.txt", "main.c", "test.c"};
+    const char* filenames[] = {"test.txt", "main.c", "test.c"};
     const int len = COUNT_OF(filenames);
-
-    arch_insert_files(&inst, filenames, len, cnf);
+    arch_insert_files(&inst, (string_array){.arr = filenames, .len = len});
     fprintf(stdout, "inst.hdr.file_count = %lu\n", inst.hdr.file_count);
     arch_instance_close(&inst);
 }
@@ -69,9 +67,7 @@ void test_insert()
 void test_extract()
 {
     arch_instance inst = arch_instance_create("test.ham", true);
-    config cnf = config_new(inst.hdr.bytes_per_read, 2);
-    const char *files[] = {""};
-    arch_extract_files(&inst, "./testdir", files, COUNT_OF(files), cnf);
+    arch_extract_files(&inst, "./testdir", (string_array){0});
     arch_instance_close(&inst);
 }
 
@@ -285,19 +281,18 @@ int main(int argc, char **argv)
             EXIT_EARLY;
         }
 
-        arch_instance inst = arch_instance_create_empty(archname);
+        arch_instance inst = arch_instance_create_empty(archname, (config){0});
         if (!inst.f)
         {
             EXIT_EARLY;
         }
-        config cnf = config_new(inst.hdr.bytes_per_read, 2);
         if (opts[OPT_FILE].arg_count < 2)
         {
             fprintf(stdout, "No files passed to insert to archive [%s]\n", archname);
             goto early_exit;
         }
 
-        arch_insert_files(&inst, (string_array){.arr = opts[OPT_FILE].args + 1, .len = opts[OPT_FILE].arg_count - 1}, cnf);
+        arch_insert_files(&inst, (string_array){.arr = opts[OPT_FILE].args + 1, .len = opts[OPT_FILE].arg_count - 1});
         arch_instance_close(&inst);
     }
     else if (opts[OPT_EXTRACT].appears)
@@ -313,13 +308,12 @@ int main(int argc, char **argv)
         {
             EXIT_EARLY;
         }
-        config cnf = config_new(inst.hdr.bytes_per_read, 2);
 
         char dir[100] = "./dir_";
         strncat(dir, archname, 100 - 1);
         mkdir_if_no(dir);
 
-        arch_extract_files(&inst, dir, (string_array){.arr = opts[OPT_EXTRACT].args, .len = opts[OPT_EXTRACT].arg_count}, cnf);
+        arch_extract_files(&inst, dir, (string_array){.arr = opts[OPT_EXTRACT].args, .len = opts[OPT_EXTRACT].arg_count});
         arch_instance_close(&inst);
     }
     else if (opts[OPT_DELETE].appears)
@@ -335,8 +329,7 @@ int main(int argc, char **argv)
         {
             EXIT_EARLY;
         }
-        config cnf = config_new(inst.hdr.bytes_per_read, 2);
-        arch_delete_files(&inst, (string_array){.arr = opts[OPT_DELETE].args, .len = opts[OPT_DELETE].arg_count}, "./delete_dir", cnf);
+        arch_delete_files(&inst, (string_array){.arr = opts[OPT_DELETE].args, .len = opts[OPT_DELETE].arg_count}, "./delete_dir");
         arch_instance_close(&inst);
     }
     else if (opts[OPT_LIST].appears)
@@ -351,13 +344,6 @@ int main(int argc, char **argv)
         if (!inst.f)
         {
             EXIT_EARLY;
-        }
-        config cnf = config_new(inst.hdr.bytes_per_read, 2);
-
-        fprintf(stdout, "Files:\n\r");
-        for (size_t i = 0; i < inst.hdr.file_count; ++i)
-        {
-            fprintf(stdout, "%s\n\r", inst.file_hdrs[i].filename);
         }
 
         arch_list_files(&inst);
@@ -387,7 +373,6 @@ int main(int argc, char **argv)
                     break;
                 }
             }
-
             arch_concat_archs(archname, (arch_array){.arr = archs, .len = archs_len});
 
             break;
@@ -419,8 +404,7 @@ int main(int argc, char **argv)
             EXIT_EARLY;
         }
         arch_instance inst = arch_instance_create(opts[OPT_FILE].args[0], false);
-        config cnf = config_new(inst.hdr.bytes_per_read, 2);
-        arch_insert_files(&inst, (string_array){.arr = opts[OPT_APPEND].args, .len = opts[OPT_APPEND].arg_count}, cnf);
+        arch_insert_files(&inst, (string_array){.arr = opts[OPT_APPEND].args, .len = opts[OPT_APPEND].arg_count});
         arch_instance_close(&inst);
     }
 
