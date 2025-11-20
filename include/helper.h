@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#define COUNT_OF(x) ((sizeof(x) / sizeof(0 [x])) / ((size_t)(!(sizeof(x) % sizeof(0 [x])))))
+
 void mkdir_if_no(const char *dirname)
 {
     struct stat st = {0};
@@ -16,6 +18,18 @@ void mkdir_if_no(const char *dirname)
     {
         mkdir(dirname, 0700);
     }
+}
+
+void join_dir_and_file(char *restrict dst, size_t maxlen, const char *restrict dir, const char *restrict filename)
+{
+    const char *template = dir[strlen(dir) - 1] == '/' ? "%s%s" : "%s/%s";
+    snprintf(dst, maxlen - 1, template, dir, filename);
+}
+
+char *get_clean_filename(const char *str)
+{
+    char *buf = strrchr(str, '/');
+    return buf == NULL ? (char *)str : buf + 1;
 }
 
 size_t file_size(FILE *f)
@@ -29,7 +43,7 @@ size_t file_size(FILE *f)
     return r - l;
 }
 
-void file_write_pos(int64_t pos, const void *data, size_t data_size, FILE *f)
+void file_write_pos(int64_t pos, const void *restrict data, size_t data_size, FILE *restrict f)
 {
     if (fseek(f, pos, SEEK_SET))
     {
@@ -54,28 +68,57 @@ void file_read_pos(int64_t pos, void *dst, size_t data_size, FILE *f)
 }
 
 #define SHIFT_CHUNK_SIZE 100ll
-void shift_data_in_file(int64_t end_offset, int64_t start_offset, int64_t n_shift, FILE *restrict f)
+void right_shift_file(int64_t end_off, int64_t start_off, int64_t n_shift, FILE *restrict f)
 {
-    char buf[SHIFT_CHUNK_SIZE];
-    void *shift_buf = calloc(1, n_shift);
-    file_write_pos(end_offset, shift_buf, n_shift, f);
-    free(shift_buf);
-    for (int64_t chunk_counter = 1; end_offset - chunk_counter * SHIFT_CHUNK_SIZE >= start_offset; ++chunk_counter)
+    assert(end_off > start_off);
+
+    char buf[SHIFT_CHUNK_SIZE] = {0};
+
+    for (int64_t i = 0; i <= n_shift / SHIFT_CHUNK_SIZE; ++i)
     {
-        int64_t off = end_offset - SHIFT_CHUNK_SIZE * chunk_counter;
-        file_read_pos(off, buf, SHIFT_CHUNK_SIZE, f);
-        file_write_pos(end_offset + n_shift - SHIFT_CHUNK_SIZE * chunk_counter, buf, SHIFT_CHUNK_SIZE, f);
+        file_write_pos(end_off + i * SHIFT_CHUNK_SIZE, buf, SHIFT_CHUNK_SIZE, f);
     }
-    size_t rest_size = (end_offset - start_offset) % SHIFT_CHUNK_SIZE;
+
+    for (int64_t chunk_counter = (end_off - start_off) / SHIFT_CHUNK_SIZE; chunk_counter > 0; --chunk_counter)
+    {
+        int64_t pos = end_off - chunk_counter * SHIFT_CHUNK_SIZE;
+        file_read_pos(pos, buf, SHIFT_CHUNK_SIZE, f);
+        file_write_pos(n_shift + pos, buf, SHIFT_CHUNK_SIZE, f);
+    }
+    int64_t rest_size = (end_off - start_off) % SHIFT_CHUNK_SIZE;
     if (rest_size == 0)
     {
         return;
     }
-    void *rest_buf = malloc(rest_size);
-    file_read_pos(start_offset, rest_buf, rest_size, f);
-    int64_t fin_write_off = end_offset + n_shift - ((end_offset - start_offset) / SHIFT_CHUNK_SIZE) * SHIFT_CHUNK_SIZE - rest_size;
-    file_write_pos(fin_write_off, rest_buf, rest_size, f);
-    free(rest_buf);
+
+    int64_t pos = start_off;
+    file_read_pos(pos, buf, rest_size, f);
+    file_write_pos(n_shift + pos, buf, rest_size, f);
+}
+
+void left_shift_file(int64_t end_off, int64_t start_off, int64_t n_shift, FILE *restrict f)
+{
+
+    char buf[SHIFT_CHUNK_SIZE] = {0};
+
+    assert(end_off > start_off);
+    assert(start_off >= n_shift);
+
+    for (int64_t chunk_counter = 0; chunk_counter < (end_off - start_off) / SHIFT_CHUNK_SIZE; ++chunk_counter)
+    {
+        int64_t pos = start_off + chunk_counter * SHIFT_CHUNK_SIZE;
+        file_read_pos(pos, buf, SHIFT_CHUNK_SIZE, f);
+        file_write_pos(-n_shift + pos, buf, SHIFT_CHUNK_SIZE, f);
+    }
+    int64_t rest_size = (end_off - start_off) % SHIFT_CHUNK_SIZE;
+    if (rest_size == 0)
+    {
+        return;
+    }
+
+    int64_t pos = start_off + ((end_off - start_off) / SHIFT_CHUNK_SIZE) * SHIFT_CHUNK_SIZE;
+    file_read_pos(pos, buf, rest_size, f);
+    file_write_pos(-n_shift + pos, buf, rest_size, f);
 }
 
 #endif

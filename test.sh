@@ -3,7 +3,7 @@
 # rm ./test.ham
 # rm ./testdir/*
 
-make && ./ham.exe --create --file=./archive.ham ./testdir/0_test.txt ./testdir/1_main.c ./testdir/2_test.c
+make && ./hamarc --create -f test_arch.ham && ./hamarc -f test_arch.ham -a ./Makefile
 
 
 

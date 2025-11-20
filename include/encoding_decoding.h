@@ -160,8 +160,12 @@ size_t calc_encoded_size(size_t init_size, config cnf)
     size_t enc_whole = k * cnf.enc_BYTES_per_chunk;
 
     size_t left = init_size % cnf.BYTES_per_chunk;
-    size_t enc_left = ceil(hamming_calc_encoded_size(left * BITS_IN_BYTE) / 8.);
 
+    if (left == 0)
+    {
+        return enc_whole;
+    }
+    size_t enc_left = ceil(hamming_calc_encoded_size(left * BITS_IN_BYTE) / 8.);
     return enc_whole + enc_left;
 }
 #endif
