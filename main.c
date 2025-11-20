@@ -297,7 +297,7 @@ int main(int argc, char **argv)
             goto early_exit;
         }
 
-        arch_insert_files(&inst, opts[OPT_FILE].args + 1, opts[OPT_FILE].arg_count - 1, cnf);
+        arch_insert_files(&inst, (string_array){.arr = opts[OPT_FILE].args + 1, .len = opts[OPT_FILE].arg_count - 1}, cnf);
         arch_instance_close(&inst);
     }
     else if (opts[OPT_EXTRACT].appears)
@@ -322,7 +322,7 @@ int main(int argc, char **argv)
         {
             mkdir(dir, 0700);
         }
-        arch_extract_files(&inst, dir, opts[OPT_EXTRACT].args, opts[OPT_EXTRACT].arg_count, cnf);
+        arch_extract_files(&inst, dir, (string_array){.arr = opts[OPT_EXTRACT].args, .len = opts[OPT_EXTRACT].arg_count}, cnf);
         arch_instance_close(&inst);
     }
     else if (opts[OPT_DELETE].appears)
@@ -339,7 +339,7 @@ int main(int argc, char **argv)
             EXIT_EARLY;
         }
         config cnf = config_new(inst.hdr.bytes_per_read, 2);
-        arch_delete_files(&inst, opts[OPT_DELETE].args, opts[OPT_DELETE].arg_count, cnf);
+        arch_delete_files(&inst, (string_array){.arr = opts[OPT_DELETE].args, .len = opts[OPT_DELETE].arg_count}, "./delete_dir", cnf);
         arch_instance_close(&inst);
     }
     else if (opts[OPT_LIST].appears)
@@ -373,6 +373,42 @@ int main(int argc, char **argv)
         {
             EXIT_EARLY;
         }
+
+        size_t archs_len = opts[OPT_CONCAT].arg_count;
+        arch_instance *archs = calloc(archs_len, sizeof(arch_instance));
+
+        bool is_err = false;
+        while (true)
+        {
+            for (size_t i = 0; i < archs_len; ++i)
+            {
+                archs[i] = arch_instance_create(opts[OPT_CONCAT].args[i], true);
+                if (!archs[i].f)
+                {
+                    fprintf(stderr, "Concatenation err: could not open archive on path %s", opts[OPT_CONCAT].args[i]);
+                    is_err = true;
+                    break;
+                }
+            }
+
+            arch_concat_archs(archname, (arch_array){.arr = archs, .len = archs_len});
+
+            break;
+        }
+
+        for (size_t i = 0; i < archs_len; ++i)
+        {
+            if (archs->f)
+            {
+                arch_instance_close(&archs[i]);
+            }
+        }
+
+        if (is_err)
+        {
+            EXIT_EARLY;
+        }
+
         arch_instance inst = arch_instance_create(archname, true);
         if (!inst.f)
         {
@@ -380,7 +416,8 @@ int main(int argc, char **argv)
         }
         config cnf = config_new(inst.hdr.bytes_per_read, 2);
         arch_instance *inst_arr;
-        arch_concat_archives(inst_arr, inst_arr_len, cnf);
+
+        arch_concat_archs();
         arch_instance_close(&inst);
     }
     else if (opts[OPT_APPEND].appears)
@@ -397,10 +434,9 @@ int main(int argc, char **argv)
         }
         arch_instance inst = arch_instance_create(opts[OPT_FILE].args[0], false);
         config cnf = config_new(inst.hdr.bytes_per_read, 2);
-        arch_insert_files(&inst, opts[OPT_APPEND].args, opts[OPT_APPEND].arg_count, cnf);
+        arch_insert_files(&inst, (string_array){.arr = opts[OPT_APPEND].args, .len = opts[OPT_APPEND].arg_count}, cnf);
         arch_instance_close(&inst);
     }
-
 
 early_exit:
     for (int i = 0; i < argc; ++i)

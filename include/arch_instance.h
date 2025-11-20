@@ -39,6 +39,12 @@ typedef struct
     arch_file_header *file_hdrs;
 } arch_instance;
 
+typedef struct
+{
+    const char **arr;
+    size_t len;
+} string_array;
+
 void arch_instance_close(arch_instance *inst)
 {
     free(inst->file_hdrs);
@@ -162,38 +168,44 @@ void test_shift_data_in_file()
 {
 }
 
-arch_file_header *arch_get_new_headers(arch_instance *inst, const file_to_append *new_files, size_t new_file_count, config cnf)
+typedef struct
 {
-    assert(new_file_count > 0);
+    const file_to_append *arr;
+    size_t len;
+} file_to_append_array;
+
+arch_file_header *arch_get_new_headers(arch_instance *inst, file_to_append_array new_files, config cnf)
+{
+    assert(new_files.len > 0);
 
     if (inst->hdr.file_count == 0)
     {
-        inst->file_hdrs = realloc(inst->file_hdrs, new_file_count * sizeof(arch_file_header));
+        inst->file_hdrs = realloc(inst->file_hdrs, new_files.len * sizeof(arch_file_header));
         inst->hdr.free_file_count = cnf.FREE_FILE_COUNT;
 
-        size_t f_offset = sizeof(arch_file_header) + (new_file_count + inst->hdr.free_file_count) * sizeof(arch_file_header);
-        for (size_t i = 0; i < new_file_count; ++i)
+        size_t f_offset = sizeof(arch_file_header) + (new_files.len + inst->hdr.free_file_count) * sizeof(arch_file_header);
+        for (size_t i = 0; i < new_files.len; ++i)
         {
             arch_file_header hdr;
-            hdr.init_size = new_files[i].file_size;
-            hdr.enc_size = calc_encoded_size(new_files[i].file_size, cnf);
-            strncpy(hdr.filename, new_files[i].filename, arch_file_header_NAME_LEN - 1);
+            hdr.init_size = new_files.arr[i].file_size;
+            hdr.enc_size = calc_encoded_size(new_files.arr[i].file_size, cnf);
+            strncpy(hdr.filename, new_files.arr[i].filename, arch_file_header_NAME_LEN - 1);
             hdr.offset = f_offset;
 
             inst->file_hdrs[i] = hdr;
             f_offset += hdr.enc_size;
         }
 
-        inst->hdr.file_count += new_file_count;
+        inst->hdr.file_count += new_files.len;
         return inst->file_hdrs;
     }
 
-    if (inst->hdr.free_file_count < new_file_count)
+    if (inst->hdr.free_file_count < new_files.len)
     {
         inst->hdr.free_file_count = cnf.FREE_FILE_COUNT;
 
         // move old files
-        size_t new_offset_for_first_file = (inst->hdr.file_count + new_file_count + inst->hdr.free_file_count) * sizeof(arch_file_header) + sizeof(arch_file_header);
+        size_t new_offset_for_first_file = (inst->hdr.file_count + new_files.len + inst->hdr.free_file_count) * sizeof(arch_file_header) + sizeof(arch_file_header);
         size_t old_offset_for_first_file = inst->file_hdrs[0].offset;
 
         size_t shift_len = new_offset_for_first_file - old_offset_for_first_file;
@@ -212,17 +224,17 @@ arch_file_header *arch_get_new_headers(arch_instance *inst, const file_to_append
     }
     else
     {
-        inst->hdr.free_file_count -= new_file_count;
+        inst->hdr.free_file_count -= new_files.len;
     }
 
-    inst->file_hdrs = realloc(inst->file_hdrs, sizeof(arch_file_header) * (inst->hdr.file_count + new_file_count));
+    inst->file_hdrs = realloc(inst->file_hdrs, sizeof(arch_file_header) * (inst->hdr.file_count + new_files.len));
     arch_file_header *last_file = &inst->file_hdrs[inst->hdr.file_count - 1];
     size_t f_offset = last_file->offset + last_file->enc_size;
-    for (size_t i = 0; i < new_file_count; ++i)
+    for (size_t i = 0; i < new_files.len; ++i)
     {
         arch_file_header hdr;
-        hdr.init_size = new_files[i].file_size;
-        strncpy(hdr.filename, new_files[i].filename, arch_file_header_NAME_LEN - 1);
+        hdr.init_size = new_files.arr[i].file_size;
+        strncpy(hdr.filename, new_files.arr[i].filename, arch_file_header_NAME_LEN - 1);
         hdr.enc_size = calc_encoded_size(hdr.init_size, cnf);
         hdr.offset = f_offset;
 
@@ -230,40 +242,47 @@ arch_file_header *arch_get_new_headers(arch_instance *inst, const file_to_append
         f_offset += hdr.enc_size;
     }
 
-    inst->hdr.file_count += new_file_count;
+    inst->hdr.file_count += new_files.len;
 
-    return &inst->file_hdrs[inst->hdr.file_count - new_file_count];
+    return &inst->file_hdrs[inst->hdr.file_count - new_files.len];
 }
 
-void arch_insert_files(arch_instance *inst, const char **filenames, size_t file_count, config cnf)
+void __arch_insert_file_streams(arch_instance *inst, file_to_append_array files, config cnf)
 {
-    assert(file_count > 0);
-    file_to_append *files = calloc(file_count, sizeof(file_to_append));
+    arch_file_header *new_hdrs = arch_get_new_headers(inst,
+                                                      files,
+                                                      cnf);
+    for (size_t i = 0; i < files.len; ++i)
+    {
+        if (fseek(inst->f, new_hdrs[i].offset, SEEK_SET))
+        {
+            assert(false && "fseek(inst.f, hdrs[i].offset, SEEK_SET)");
+        }
+        do_file_encoding(files.arr[i].f_stream, new_hdrs[i].init_size, inst->f, cnf);
+    }
+    file_write_pos(0, &inst->hdr, sizeof(arch_header), inst->f);
+    file_write_pos(sizeof(arch_header), inst->file_hdrs, sizeof(arch_file_header) * inst->hdr.file_count, inst->f);
+}
+
+void arch_insert_files(arch_instance *inst, string_array filenames, config cnf)
+{
+    assert(filenames.len > 0);
+    file_to_append *files = calloc(filenames.len, sizeof(file_to_append));
     while (true)
     {
-        for (size_t i = 0; i < file_count; ++i)
+        for (size_t i = 0; i < filenames.len; ++i)
         {
-            files[i] = file_to_append_open(filenames[i]);
+            files[i] = file_to_append_open(filenames.arr[i]);
             if (!files[i].f_stream)
             {
                 break;
             }
         }
-        arch_file_header *new_hdrs = arch_get_new_headers(inst, files, file_count, cnf);
-        for (size_t i = 0; i < file_count; ++i)
-        {
-            if (fseek(inst->f, new_hdrs[i].offset, SEEK_SET))
-            {
-                assert(false && "fseek(inst.f, hdrs[i].offset, SEEK_SET)");
-            }
-            do_file_encoding(files[i].f_stream, new_hdrs[i].init_size, inst->f, cnf);
-        }
-        file_write_pos(0, &inst->hdr, sizeof(arch_header), inst->f);
-        file_write_pos(sizeof(arch_header), inst->file_hdrs, sizeof(arch_file_header) * inst->hdr.file_count, inst->f);
+        __arch_insert_file_streams(inst, (file_to_append_array){.arr = files, .len = filenames.len}, cnf);
         break;
     }
 
-    for (size_t i = 0; i < file_count; ++i)
+    for (size_t i = 0; i < filenames.len; ++i)
     {
         file_to_append_close(&files[i]);
     }
@@ -289,9 +308,9 @@ bool __arch_extract_single(arch_instance *inst, const arch_file_header *hdr, con
     return true;
 }
 
-void arch_extract_files(arch_instance *inst, const char *dir, const char **files, size_t files_len, config cnf)
+void arch_extract_files(arch_instance *inst, const char *dir, string_array filenames, config cnf)
 {
-    if (files_len == 0)
+    if (filenames.len == 0)
     {
         for (size_t i = 0; i < inst->hdr.file_count; ++i)
         {
@@ -300,12 +319,12 @@ void arch_extract_files(arch_instance *inst, const char *dir, const char **files
         return;
     }
 
-    for (size_t name_i = 0; name_i < files_len; ++name_i)
+    for (size_t name_i = 0; name_i < filenames.len; ++name_i)
     {
         const arch_file_header *hdr = NULL;
         for (size_t i = 0; i < inst->hdr.file_count; ++i)
         {
-            if (strcmp(inst->file_hdrs[i].filename, files[name_i]) == 0)
+            if (strcmp(inst->file_hdrs[i].filename, filenames.arr[name_i]) == 0)
             {
                 hdr = &inst->file_hdrs[i];
                 break;
@@ -314,25 +333,27 @@ void arch_extract_files(arch_instance *inst, const char *dir, const char **files
 
         if (!hdr)
         {
-            fprintf(stderr, "No file [%s] in archive [%s]", files[name_i], inst->name);
+            fprintf(stderr, "No file [%s] in archive [%s]", filenames.arr[name_i], inst->name);
             continue;
         }
         __arch_extract_single(inst, hdr, dir, cnf);
     }
 }
 
-void arch_delete_files(arch_instance *inst, const char **files, size_t files_len, const char *dir, config cnf)
+void arch_delete_files(arch_instance *inst, string_array filenames, const char *dir, config cnf)
 {
-    for (size_t i = 0; i < files_len; ++i)
+    for (size_t i = 0; i < filenames.len; ++i)
     {
-        const char *fname = &files[i];
+        const char *fname = &filenames.arr[i];
 
         arch_file_header *hdr = NULL;
+        size_t hdr_index;
         for (size_t hdr_i = 0; hdr_i < inst->hdr.file_count; ++hdr_i)
         {
             if (strcmp(inst->file_hdrs[hdr_i].filename, fname) == 0)
             {
                 hdr = &inst->file_hdrs[hdr_i];
+                hdr_index = hdr_i;
                 break;
             }
         }
@@ -369,14 +390,135 @@ void arch_delete_files(arch_instance *inst, const char **files, size_t files_len
             if (fwrite(buf, n_rest, 1, dst) != 1)
             {
                 fprintf(stderr, "COuld not write chunk of data with size %lu from archive %s to %s", n_rest, inst->name, fname);
-                continue;
             }
         }
-
         free(buf);
+
+        if (hdr_index == inst->hdr.file_count - 1)
+        {
+            // skip for now
+        }
+        else
+        {
+            int64_t end_offset = inst->file_hdrs[inst->hdr.file_count - 1].offset + inst->file_hdrs[inst->hdr.file_count - 1].enc_size;
+            int64_t start_offset = hdr->offset + hdr->enc_size;
+            int64_t shift_len = hdr->enc_size;
+            shift_data_in_file(end_offset, start_offset, shift_len, inst->f);
+        }
+
+        // fix offsets
+        for (size_t i = hdr_index + 1; i < inst->hdr.file_count; ++i)
+        {
+            inst->file_hdrs[i - 1] = inst->file_hdrs[i];
+        }
+        inst->hdr.file_count -= 1;
+
+        for (size_t i = 0; i < inst->hdr.file_count; ++i)
+        {
+            inst->file_hdrs->offset -= hdr->enc_size;
+        }
     }
 }
 
-void arch_concat_archs(arch_instance *inst_arr, size_t inst_arr_len, config *config);
+typedef struct
+{
+    arch_instance inst;
+    config cnf;
+} arch_cnf;
+
+typedef struct
+{
+    arch_cnf *arr;
+    size_t len;
+} arch_cnf_array;
+
+void arch_concat_archs(const char *dst_name, arch_cnf_array archs)
+{
+    arch_instance dst_inst = {0};
+
+    for (size_t i = 0; i < archs.len; ++i)
+    {
+        if (strcmp(archs.arr[i].inst.name, dst_name) == 0)
+        {
+            dst_inst = archs.arr[i].inst;
+            for (size_t j = i + 1; j < archs.len; ++j)
+            {
+                archs.arr[j - 1] = archs.arr[j];
+            }
+            archs.len -= 1;
+            break;
+        }
+    }
+
+    if (!dst_inst.f)
+    {
+        dst_inst = arch_instance_create_empty(dst_name);
+        if (!dst_inst.f)
+        {
+            fprintf(stderr, "Could not create dst arch with path [%s]", dst_name);
+            return;
+        }
+    }
+
+    for (size_t arch_i = 0; arch_i < archs.len; ++arch_i)
+    {
+        arch_instance *cur_arch = &archs.arr[arch_i].inst;
+        config cur_cnf = archs.arr[arch_i].cnf;
+        for (size_t file_i = 0; file_i < cur_arch->hdr.file_count; ++file_i)
+        {
+            arch_file_header *cur_file = &cur_arch->file_hdrs[file_i];
+            if (fseek(cur_arch->f, cur_file->offset, SEEK_SET))
+            {
+                fprintf(stderr, "Failed seeking, arch: %s, file_index: %lu\n", cur_arch->name, file_i);
+                continue;
+            }
+
+            const char *temp_nm = "_temp";
+
+            FILE *temp = fopen(temp_nm, "w+");
+            void *buf = malloc(cur_cnf.enc_BYTES_per_chunk);
+            for (size_t i = 0; i + cur_cnf.enc_BYTES_per_chunk < cur_file->enc_size; i += cur_cnf.enc_BYTES_per_chunk)
+            {
+                if (fwrite(buf, cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
+                {
+                    fprintf(stderr, "Failed writing %s\n", cur_arch->name);
+                    continue;
+                }
+            }
+            if (cur_file->enc_size % cur_cnf.enc_BYTES_per_chunk == 0)
+            {
+                if (fwrite(buf, cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
+                {
+                    fprintf(stderr, "Failed writing %s\n", cur_arch->name);
+                    continue;
+                }
+            }
+            else
+            {
+                if (fwrite(buf, cur_file->enc_size % cur_cnf.enc_BYTES_per_chunk, 1, cur_arch->f) != 1)
+                {
+                    fprintf(stderr, "Failed writing %s\n", cur_arch->name);
+                    continue;
+                }
+            }
+
+            free(buf);
+
+            string_array arg = {.arr = {temp_nm}, .len = 1};
+            arch_extract_files(cur_arch, "./", arg, cur_cnf);
+
+            file_to_append arr[] = {(file_to_append){
+                .f_stream = temp,
+                .file_size = cur_file->enc_size,
+                .filename = cur_file->filename,
+            }};
+            __arch_insert_file_streams(&dst_inst, (file_to_append_array){.arr = arr, .len = COUNT_OF(arr)}, config);
+
+            fclose(temp);
+        }
+    }
+
+    arch_instance_close(&dst_inst);
+}
 
 #endif
