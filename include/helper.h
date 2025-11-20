@@ -8,6 +8,16 @@
 #include <stdbool.h>
 #include <string.h>
 
+void mkdir_if_no(const char *dirname)
+{
+    struct stat st = {0};
+
+    if (stat(dirname, &st) == -1)
+    {
+        mkdir(dirname, 0700);
+    }
+}
+
 size_t file_size(FILE *f)
 {
     size_t init = ftell(f);

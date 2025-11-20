@@ -317,11 +317,8 @@ int main(int argc, char **argv)
 
         char dir[100] = "./dir_";
         strncat(dir, archname, 100 - 1);
-        struct stat st = {0};
-        if (stat(dir, &st) == -1)
-        {
-            mkdir(dir, 0700);
-        }
+        mkdir_if_no(dir);
+
         arch_extract_files(&inst, dir, (string_array){.arr = opts[OPT_EXTRACT].args, .len = opts[OPT_EXTRACT].arg_count}, cnf);
         arch_instance_close(&inst);
     }
@@ -408,17 +405,6 @@ int main(int argc, char **argv)
         {
             EXIT_EARLY;
         }
-
-        arch_instance inst = arch_instance_create(archname, true);
-        if (!inst.f)
-        {
-            EXIT_EARLY;
-        }
-        config cnf = config_new(inst.hdr.bytes_per_read, 2);
-        arch_instance *inst_arr;
-
-        arch_concat_archs();
-        arch_instance_close(&inst);
     }
     else if (opts[OPT_APPEND].appears)
     {
