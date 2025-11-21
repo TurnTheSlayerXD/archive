@@ -324,19 +324,6 @@ void arch_insert_files(arch_instance *inst, string_array filenames)
     free(files);
 }
 
-void make_unique_filename(char *name)
-{
-    int i = 0;
-    char num[10];
-    while (access(name, F_OK) == 0 && i < 10)
-    {
-        snprintf(num, 10, "_%d", i);
-        strncat(name, num, 10);
-        name[strlen(name) - strlen(num)] = '\0';
-        ++i;
-    }
-}
-
 char *__arch_extract_single(arch_instance *inst, const arch_file_header *hdr, const char *dir)
 {
     char fin_name[150] = {0};

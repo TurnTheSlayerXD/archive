@@ -3,7 +3,7 @@
 # rm ./test.ham
 # rm ./testdir/*
 
-make && ./hamarc --create -f test_arch.ham && ./hamarc -f test_arch.ham -a ./Makefile && ./hamarc -f test_arch.ham -a ./Makefile ./main.c
+make && ./hamarc --create -f arch.ham main.c && ./hamarc --create -f barch.ham Makefile && && ./hamarc -f carch.ham -A arch.ham barch.ham
 
 
 

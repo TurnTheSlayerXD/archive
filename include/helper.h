@@ -138,4 +138,16 @@ void left_shift_file(int64_t end_off, int64_t start_off, int64_t n_shift, FILE *
     file_write_pos(-n_shift + pos, buf, rest_size, f);
 }
 
+void make_unique_filename(char *name)
+{
+    int i = 0;
+    char num[10];
+    while (access(name, F_OK) == 0 && i < 10)
+    {
+        snprintf(num, 10, "_%d", i);
+        strncat(name, num, 10);
+        ++i;
+    }
+}
+
 #endif

@@ -464,6 +464,7 @@ int main(int argc, char **argv)
                 }
             }
             arch_concat_archs(archname, (arch_array){.arr = archs, .len = archs_len});
+
             break;
         }
 

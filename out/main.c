@@ -80,10 +80,6 @@ typedef enum
     OPT_APPEND,
     OPT_DELETE,
     OPT_CONCAT,
-
-    OPT_DST_DIR,
-
-    OPT_HELP,
 } OPT_E;
 
 typedef struct
@@ -107,7 +103,7 @@ bool starts_with(const char *str, const char *substr)
     return strstr(str, substr) == str;
 }
 
-bool check_no_args_except(const cmd_opt *restrict all, size_t all_len, const OPT_E *restrict except, size_t except_len)
+bool check_no_args(const cmd_opt *restrict all, size_t all_len, const OPT_E *restrict except, size_t except_len)
 {
     for (size_t opt_i = 0; opt_i < all_len; ++opt_i)
     {
@@ -132,37 +128,10 @@ bool check_no_args_except(const cmd_opt *restrict all, size_t all_len, const OPT
     return true;
 }
 
-bool is_no_args(const cmd_opt *restrict all, size_t all_len)
-{
-    for (size_t i = 0; i < all_len; ++i)
-    {
-        if (all[i].appears)
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 int main(int argc, char **argv)
 {
     argc -= 1;
     argv += 1;
-
-    const char *help_info = "\n\rКонсольное приложение, поддерживающее следующие аргументы командной строки:\n\r"
-                            "-c, --create           - создание нового архива\n\r"
-                            "-f, --file=[ARHCNAME]  - имя файла с архивом\n\r"
-                            "-l, --list             - вывести список файлов в архиве\n\r"
-                            "-x, --extract          - извлечь файлы из архива  (если не указано, то все файлы)\n\r"
-                            "-a, --append           - добавить файл в архив\n\r"
-                            "-d, --delete           - удалить файл из архива\n\r"
-                            "-A, --concatenate      - смерджить два архива\n\r"
-                            "Имена файлов передаются свободными аргументами\n\r"
-                            "Аргументы для кодирования и декодирования так же передаются через командую строку (Названия и типы аргументов часть задания)\n\r"
-                            "### Примеры запуска\n\r"
-                            "hamarc --create --file=ARCHIVE FILE1 FILE2 FILE3\n\r"
-                            "hamarc -l -f ARCHIVE\n\r"
-                            "hamarc --concantenate  ARCHIVE1 ARCHIVE2 -f ARCHIVE3\n\r";
 
     cmd_opt opts[] =
         {
@@ -222,22 +191,6 @@ int main(int argc, char **argv)
                 .arg_count = 0,
                 .code = OPT_CONCAT,
             },
-            {
-                .s_alias = "-dst",
-                .l_alias = "--destination",
-                .appears = false,
-                .args = NULL,
-                .arg_count = 0,
-                .code = OPT_DST_DIR,
-            },
-            {
-                .s_alias = "-h",
-                .l_alias = "--help",
-                .appears = false,
-                .args = NULL,
-                .arg_count = 0,
-                .code = OPT_HELP,
-            },
         };
 
     int ret_code = 0;
@@ -275,7 +228,7 @@ int main(int argc, char **argv)
 
             if (!right_opt)
             {
-                fprintf(stderr, "Error parsing: unknown opt = %s\n", arg);
+                fprintf(stderr, "Error parsing: unknown opt = %s", arg);
                 EXIT_EARLY;
             }
 
@@ -302,21 +255,6 @@ int main(int argc, char **argv)
         }
     }
 
-    if (is_no_args(opts, COUNT_OF(opts)) || opts[OPT_HELP].appears)
-    {
-        if (opts[OPT_HELP].appears)
-        {
-            OPT_E allowed[] = {OPT_HELP};
-            if (!check_no_args_except(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
-            {
-                fprintf(stdout, "If --help option specified other ones will be discarded\n");
-            }
-        }
-
-        fprintf(stdout, "%s\n", help_info);
-        goto early_exit;
-    }
-
     if (!opts[OPT_FILE].appears)
     {
         fprintf(stderr, "Expected --file option\n");
@@ -332,14 +270,14 @@ int main(int argc, char **argv)
     if (opts[OPT_CREATE].appears)
     {
         OPT_E allowed[] = {OPT_CREATE, OPT_FILE};
-        if (!check_no_args_except(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
         {
             EXIT_EARLY;
         }
 
         if (opts[OPT_CREATE].arg_count != 0)
         {
-            fprintf(stderr, "Expected --create option to have ZERO args\n");
+            fprintf(stderr, "Expected --create option to have one ZERO args\n");
             EXIT_EARLY;
         }
 
@@ -359,8 +297,8 @@ int main(int argc, char **argv)
     }
     else if (opts[OPT_EXTRACT].appears)
     {
-        OPT_E allowed[] = {OPT_EXTRACT, OPT_FILE, OPT_DST_DIR};
-        if (!check_no_args_except(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        OPT_E allowed[] = {OPT_EXTRACT, OPT_FILE};
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
         {
             EXIT_EARLY;
         }
@@ -372,19 +310,8 @@ int main(int argc, char **argv)
         }
 
         char dir[100] = "./extract_dir_";
+
         strncat(dir, get_clean_filename(archname), 100 - 1);
-
-        if (opts[OPT_DST_DIR].appears)
-        {
-            if (opts[OPT_DST_DIR].arg_count != 1)
-            {
-                fprintf(stderr, "Expected one argument for option --destination\n");
-                EXIT_EARLY;
-            }
-
-            strncpy(dir, opts[OPT_DST_DIR].args[0], 99);
-        }
-
         mkdir_if_no(dir);
 
         string_array_to_free files = arch_extract_files(&inst, dir, (string_array){.arr = opts[OPT_EXTRACT].args, .len = opts[OPT_EXTRACT].arg_count});
@@ -393,8 +320,8 @@ int main(int argc, char **argv)
     }
     else if (opts[OPT_DELETE].appears)
     {
-        OPT_E allowed[] = {OPT_DELETE, OPT_FILE, OPT_DST_DIR};
-        if (!check_no_args_except(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        OPT_E allowed[] = {OPT_DELETE, OPT_FILE};
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
         {
             EXIT_EARLY;
         }
@@ -406,17 +333,8 @@ int main(int argc, char **argv)
         }
 
         char dir[100] = "./delete_dir_";
-        strncat(dir, get_clean_filename(archname), 100 - 1);
+        strncat(dir, inst.name, COUNT_OF(dir) - COUNT_OF("./delete_dir_") - 1);
 
-        if (opts[OPT_DST_DIR].appears)
-        {
-            if (opts[OPT_DST_DIR].arg_count != 1)
-            {
-                fprintf(stderr, "Expected one argument for option --destination\n");
-                EXIT_EARLY;
-            }
-            strncpy(dir, opts[OPT_DST_DIR].args[0], 99);
-        }
         mkdir_if_no(dir);
 
         arch_delete_files(&inst, (string_array){.arr = opts[OPT_DELETE].args, .len = opts[OPT_DELETE].arg_count}, dir);
@@ -425,7 +343,7 @@ int main(int argc, char **argv)
     else if (opts[OPT_LIST].appears)
     {
         OPT_E allowed[] = {OPT_LIST, OPT_FILE};
-        if (!check_no_args_except(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
         {
             EXIT_EARLY;
         }
@@ -442,7 +360,7 @@ int main(int argc, char **argv)
     else if (opts[OPT_CONCAT].appears)
     {
         OPT_E allowed[] = {OPT_CONCAT, OPT_FILE};
-        if (!check_no_args_except(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
         {
             EXIT_EARLY;
         }
@@ -464,6 +382,7 @@ int main(int argc, char **argv)
                 }
             }
             arch_concat_archs(archname, (arch_array){.arr = archs, .len = archs_len});
+
             break;
         }
 
@@ -483,7 +402,7 @@ int main(int argc, char **argv)
     else if (opts[OPT_APPEND].appears)
     {
         OPT_E allowed[] = {OPT_APPEND, OPT_FILE};
-        if (!check_no_args_except(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
+        if (!check_no_args(opts, COUNT_OF(opts), allowed, COUNT_OF(allowed)))
         {
             EXIT_EARLY;
         }
@@ -498,7 +417,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        fprintf(stdout, "No MEANINGFUL args were passed to hamarc except path to arch = [%s]\n", archname);
+        fprintf(stdout, "No args were passed to hamarc except path to arch = [%s]\n", archname);
     }
 
 early_exit:
