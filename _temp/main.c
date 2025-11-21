@@ -447,39 +447,21 @@ int main(int argc, char **argv)
             EXIT_EARLY;
         }
 
-        size_t archs_len = opts[OPT_CONCAT].arg_count;
-        arch_instance *archs = calloc(archs_len, sizeof(arch_instance));
+        arch_array archs = {.arr = calloc(opts[OPT_CONCAT].arg_count, sizeof(arch_instance)), .len = opts[OPT_CONCAT].arg_count};
 
-        bool is_err = false;
-        while (true)
+        for (size_t i = 0; i < archs.len; ++i)
         {
-            for (size_t i = 0; i < archs_len; ++i)
+            archs.arr[i] = arch_instance_create(opts[OPT_CONCAT].args[i], true);
+            if (!archs.arr[i].f)
             {
-                archs[i] = arch_instance_create(opts[OPT_CONCAT].args[i], true);
-                if (!archs[i].f)
-                {
-                    fprintf(stderr, "Concatenation err: could not open archive on path %s", opts[OPT_CONCAT].args[i]);
-                    is_err = true;
-                    break;
-                }
-            }
-            arch_concat_archs(archname, (arch_array){.arr = archs, .len = archs_len});
-
-            break;
-        }
-
-        for (size_t i = 0; i < archs_len; ++i)
-        {
-            if (archs->f)
-            {
-                arch_instance_close(&archs[i]);
+                fprintf(stderr, "Concatenation err: could not open archive on path %s", opts[OPT_CONCAT].args[i]);
+                arch_array_close(&archs);
+                EXIT_EARLY;
             }
         }
 
-        if (is_err)
-        {
-            EXIT_EARLY;
-        }
+        arch_concat_archs(archname, archs);
+        arch_array_close(&archs);
     }
     else if (opts[OPT_APPEND].appears)
     {

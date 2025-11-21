@@ -197,7 +197,7 @@ void file_to_append_close(file_to_append *ptr)
 
 typedef struct
 {
-    const file_to_append *arr;
+    file_to_append *arr;
     size_t len;
 } file_to_append_array;
 
@@ -302,26 +302,34 @@ void __arch_insert_file_streams(arch_instance *inst, file_to_append_array files)
 void arch_insert_files(arch_instance *inst, string_array filenames)
 {
     assert(filenames.len > 0);
-    file_to_append *files = calloc(filenames.len, sizeof(file_to_append));
+    file_to_append_array files = {.arr = calloc(filenames.len, sizeof(file_to_append)), .len = filenames.len};
     while (true)
     {
+        bool is_error = false;
         for (size_t i = 0; i < filenames.len; ++i)
         {
-            files[i] = file_to_append_open(filenames.arr[i]);
-            if (!files[i].f_stream)
+            files.arr[i] = file_to_append_open(filenames.arr[i]);
+            if (!files.arr[i].f_stream)
             {
+                is_error = true;
                 break;
             }
         }
-        __arch_insert_file_streams(inst, (file_to_append_array){.arr = files, .len = filenames.len});
+        if (is_error)
+        {
+            break;
+        }
+
+        __arch_insert_file_streams(inst, files);
         break;
     }
 
     for (size_t i = 0; i < filenames.len; ++i)
     {
-        file_to_append_close(&files[i]);
+        file_to_append_close(&files.arr[i]);
     }
-    free(files);
+    free(files.arr);
+    files = (file_to_append_array){0};
 }
 
 char *__arch_extract_single(arch_instance *inst, const arch_file_header *hdr, const char *dir)
@@ -444,6 +452,18 @@ typedef struct
     size_t len;
 } arch_array;
 
+void arch_array_close(arch_array *p)
+{
+    for (size_t i = 0; i < p->len; ++i)
+    {
+        if (p->arr[i].f)
+        {
+            arch_instance_close(&p->arr[i]);
+        }
+    }
+    free(p);
+}
+
 void arch_concat_archs(const char *dst_name, arch_array archs)
 {
     arch_instance dst_inst = {0};
@@ -475,31 +495,22 @@ void arch_concat_archs(const char *dst_name, arch_array archs)
     for (size_t arch_i = 0; arch_i < archs.len; ++arch_i)
     {
         arch_instance *cur_arch = &archs.arr[arch_i];
-        for (size_t file_i = 0; file_i < cur_arch->hdr.file_count; ++file_i)
+        const char *temp_dir = "./_temp";
+        mkdir_if_no(temp_dir);
+
+        string_array_to_free fnames = arch_extract_files(cur_arch, temp_dir, (string_array){0});
+
+        fprintf(stdout, "Extracted files from arch %s:\n", cur_arch->name);
+        for (size_t i = 0; i < fnames.len; ++i)
         {
-            arch_file_header *cur_file = &cur_arch->file_hdrs[file_i];
-            if (fseek(cur_arch->f, cur_file->offset, SEEK_SET))
+            if (fnames.arr[i])
             {
-                fprintf(stderr, "Failed seeking, arch: %s, file_index: %lu\n", cur_arch->name, file_i);
-                continue;
+                fprintf(stdout, "Extracted file [%s]\n", fnames.arr[i]);
             }
-            const char *temp_dir = "./_temp";
-            mkdir_if_no(temp_dir);
-
-            string_array_to_free fnames = arch_extract_files(cur_arch, temp_dir, (string_array){0});
-
-            fprintf(stdout, "Extracted files from arch %s:\n", cur_arch->name);
-            for (size_t i = 0; i < fnames.len; ++i)
-            {
-                if (fnames.arr[i])
-                {
-                    fprintf(stdout, "Extracted file [%s]\n", fnames.arr[i]);
-                }
-            }
-
-            arch_insert_files(&dst_inst, (string_array){.arr = fnames.arr, .len = fnames.len});
-            string_array_to_free_close(&fnames);
         }
+
+        arch_insert_files(&dst_inst, (string_array){.arr = fnames.arr, .len = fnames.len});
+        string_array_to_free_close(&fnames);
     }
 
     arch_instance_close(&dst_inst);
