@@ -8,6 +8,12 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include <unistd.h>
+
+#define _XOPEN_SOURCE 500
+#undef __USE_FILE_OFFSET64
+#include <ftw.h>
+
 #define COUNT_OF(x) ((sizeof(x) / sizeof(0 [x])) / ((size_t)(!(sizeof(x) % sizeof(0 [x])))))
 
 void mkdir_if_no(const char *dirname)
@@ -71,7 +77,7 @@ void file_read_pos(int64_t pos, void *dst, size_t data_size, FILE *f)
 void right_shift_file(int64_t end_off, int64_t start_off, int64_t n_shift, FILE *restrict f)
 {
 #define DEBUG
-
+#undef DEBUG
 #ifdef DEBUG
     void *p = malloc(end_off - start_off);
     file_read_pos(start_off, p, end_off - start_off, f);
@@ -148,6 +154,21 @@ void make_unique_filename(char *name)
         strncat(name, num, 10);
         ++i;
     }
+}
+
+int unlink_cb(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf)
+{
+    int rv = remove(fpath);
+
+    if (rv)
+        perror(fpath);
+
+    return rv;
+}
+
+int rmrf(const char *path)
+{
+    return ftw(path, unlink_cb, FTW_F);
 }
 
 #endif

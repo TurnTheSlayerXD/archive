@@ -77,7 +77,7 @@ arch_instance arch_instance_create_empty(const char *path, config cnf)
     {
         cnf = config_new(DEFAULT_BYTES_PER_CHUNK, DEFAULT_FREE_FILE_COUNT);
     }
-    FILE *f = fopen(path, "w");
+    FILE *f = fopen(path, "w+");
     if (!f)
     {
         fprintf(stderr, "arch (created) at path [%s] could not be created\n", path);
@@ -349,7 +349,12 @@ char *__arch_extract_single(arch_instance *inst, const arch_file_header *hdr, co
     {
         assert(false && "fseek(inst->f, hdr->offset, SEEK_SET)");
     }
-    do_file_decoding((encoded_file){.file = inst->f, .src_file_len = hdr->init_size, .enc_file_len = hdr->enc_size}, f, inst->cnf);
+    do_file_decoding((encoded_file){
+                         .file = inst->f,
+                         .src_file_len = hdr->init_size,
+                         .enc_file_len = hdr->enc_size,
+                     },
+                     f, inst->cnf);
     fclose(f);
     return strdup(fin_name);
 }
@@ -461,7 +466,8 @@ void arch_array_close(arch_array *p)
             arch_instance_close(&p->arr[i]);
         }
     }
-    free(p);
+    free(p->arr);
+    *p = (arch_array){0};
 }
 
 void arch_concat_archs(const char *dst_name, arch_array archs)
@@ -511,6 +517,8 @@ void arch_concat_archs(const char *dst_name, arch_array archs)
 
         arch_insert_files(&dst_inst, (string_array){.arr = fnames.arr, .len = fnames.len});
         string_array_to_free_close(&fnames);
+
+        rmrf(temp_dir);
     }
 
     arch_instance_close(&dst_inst);
